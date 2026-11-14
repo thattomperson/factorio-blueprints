@@ -3,6 +3,8 @@ name: Auto version
 # Every push to main that contains a feat/fix/perf (or breaking) commit since the last tag cuts a release:
 # bump info.json from the conventional commits, update CHANGELOG.md and changelog.txt, commit, tag, and
 # then run the release workflow (GitHub release + mod portal).
+# Day-to-day work lands on develop, which never releases; the /release skill (.claude/skills/release)
+# merges develop into main to cut a release and then syncs the version commit back into develop.
 on:
   push:
     branches: [main]

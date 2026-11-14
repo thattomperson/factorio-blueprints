@@ -1,5 +1,6 @@
 # Files left out of the mod zip (built with `git archive` in the release workflow)
 .github/            export-ignore
+.claude/            export-ignore
 tests/              export-ignore
 tools/              export-ignore
 docs/               export-ignore
