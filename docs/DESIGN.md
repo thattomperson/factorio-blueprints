@@ -1,6 +1,6 @@
 # Blueprint Designer: design plan
 
-Target: Factorio 2.0 API (`factorio_version` in `info.json`; bump to `2.1` if your game refuses to load it). No Space Age dependency.
+Target: Factorio 2.1 (`factorio_version` in `info.json`). No Space Age dependency.
 
 ## Core idea
 

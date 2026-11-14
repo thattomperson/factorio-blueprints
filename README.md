@@ -1,12 +1,12 @@
-# Blueprint Designer (Factorio 2.0 mod)
+# Blueprint Designer (Factorio 2.1 mod)
 
 Design and edit blueprints on a dedicated designer surface. See [docs/DESIGN.md](docs/DESIGN.md) for the full plan
 and known limitations.
 
 ## Install for testing
 
-Copy or symlink this folder into your Factorio `mods` directory as `blueprint-designer_0.2.0`
-(or zip it as `blueprint-designer_0.2.0.zip` containing a top-level `blueprint-designer_0.2.0/` folder).
+Copy or symlink this folder into your Factorio `mods` directory as `blueprint-designer_0.2.1`
+(or zip it as `blueprint-designer_0.2.1.zip` containing a top-level `blueprint-designer_0.2.1/` folder).
 
 ## Use
 
