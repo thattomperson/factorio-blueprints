@@ -18,6 +18,7 @@ local function new_entity(p) uid=uid+1 local e = { unit_number=uid, direction=p.
   e.destroy=function() e.valid=false end
   e.silent_revive=function() e.valid=false local r=new_entity{name=e.ghost_name, position=e.position, surface=e.surface, force={name="player"}} entities[#entities+1]=r return {}, r, nil end
   e.cancel_deconstruction=function() end
+  setmetatable(e, {__newindex=function(t,k,v) if k=='minable' then error('LuaEntity::minable is read only.') end rawset(t,k,v) end})
   e.order_upgrade=function(p) orders.upgrade[#orders.upgrade+1]={e=e,target=p.target.name} end
   e.order_deconstruction=function() orders.decon[#orders.decon+1]=e end
   return e end

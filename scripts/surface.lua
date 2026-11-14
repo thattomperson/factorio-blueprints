@@ -79,7 +79,7 @@ function M.prepare_cell(cell, design, force)
       or surface.create_entity({ name = "bpd-editor-radar", position = center, force = force })
     if cell.radar then
       cell.radar.destructible = false
-      cell.radar.minable = false
+      cell.radar.minable_flag = false
     end
   end
 
@@ -90,7 +90,7 @@ function M.prepare_cell(cell, design, force)
       or surface.create_entity({ name = "bpd-marker", position = marker_pos, force = force })
   end
   cell.marker.destructible = false
-  cell.marker.minable = false
+  cell.marker.minable_flag = false
 
   if not (cell.outline and cell.outline.valid) then
     cell.outline = rendering.draw_rectangle({
