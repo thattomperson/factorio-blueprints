@@ -3,13 +3,17 @@
 -- storage.designs[id] = {
 --   id, name,
 --   tiers = { [n] = cell },
+--   deleted_tiers = { n, ... },   -- tier numbers deleted so far, in order; later tiers moved down each time
 -- }
+-- Saved blueprints carry bpd_rev = #deleted_tiers at the time they were made, so a blueprint made before a
+-- deletion still maps to the right tier (or to none, if its tier was the one deleted).
 -- cell = {
 --   tier,
 --   version,          -- bumped every time a save changes the content
 --   export,           -- blueprint export string of the latest saved version
 --   snapshot,         -- normalised entity list of the latest version (used by tier diffs / instance updates)
 --   snapshots,        -- { [version] = snapshot } for every saved version (old ones are diffed against)
+--   saved_tick,       -- game.tick of the last save that changed the content
 --   radar, marker, outline, label   -- runtime objects on the designer surface
 -- }
 
@@ -82,6 +86,113 @@ function M.new_tier(design, from_tier, force)
   return tier
 end
 
+-- Map a tier number recorded at revision `rev` (number of deletions back then) to today's numbering.
+-- Returns nil if that tier has since been deleted.
+function M.resolve_tier(design, tier, rev)
+  local deleted = design.deleted_tiers or {}
+  for i = (rev or 0) + 1, #deleted do
+    local d = deleted[i]
+    if tier == d then return nil end
+    if tier > d then tier = tier - 1 end
+  end
+  return tier
+end
+
+function M.rev(design)
+  return design.deleted_tiers and #design.deleted_tiers or 0
+end
+
+function M.marker_tags(design, tier, version)
+  return { bpd_design = design.id, bpd_tier = tier, bpd_version = version, bpd_rev = M.rev(design) }
+end
+
+-- Destroy everything in a cell's area and put the plain lab floor back.
+local function wipe_area(surface, area)
+  for _, e in pairs(surface.find_entities_filtered({ area = area })) do
+    if e.valid and e.type ~= "character" then e.destroy() end
+  end
+  local tiles = {}
+  for x = area.left_top.x, area.right_bottom.x - 1 do
+    for y = area.left_top.y, area.right_bottom.y - 1 do
+      local pos = { x = x, y = y }
+      tiles[#tiles + 1] = { name = surf.lab_tile_at(pos), position = pos }
+    end
+  end
+  surface.set_tiles(tiles, true, false, true, false)
+end
+
+local function drop_render(cell)
+  if cell.outline and cell.outline.valid then cell.outline.destroy() end
+  if cell.label and cell.label.valid then cell.label.destroy() end
+  cell.outline, cell.label = nil, nil
+end
+
+-- Re-tag a cell's stored export so it names its current tier number (after tiers moved).
+local function refresh_export(design, cell)
+  if not cell.export then return end
+  local stack = M.scratch_blueprint()
+  if stack.import_stack(cell.export) ~= 0 or not stack.is_blueprint_setup() then return end
+  for i, e in pairs(stack.get_blueprint_entities() or {}) do
+    if e.name == M.MARKER then
+      stack.set_blueprint_entity_tags(i, M.marker_tags(design, cell.tier, cell.version))
+      break
+    end
+  end
+  stack.label = design.name .. " T" .. cell.tier
+  cell.export = stack.export_stack()
+end
+
+-- Delete a tier: its designer cell is cleared and every later tier moves down one (cells, numbers, exports).
+-- The caller handles placed copies and players on the designer. Returns false if it is the only tier.
+function M.delete_tier(design, tier, force)
+  local max = M.max_tier(design)
+  if max <= 1 or not design.tiers[tier] then return false end
+  local surface = surf.get()
+
+  drop_render(design.tiers[tier])
+  for t = tier + 1, max do
+    -- Move cell t into column t-1 (overwriting whatever is there, including the deleted tier's contents).
+    surface.clone_area({
+      source_area = surf.area(design.id, t),
+      destination_area = surf.area(design.id, t - 1),
+      destination_surface = surface,
+      clone_tiles = true,
+      clone_entities = true,
+      clone_decoratives = false,
+      clear_destination_entities = true,
+      expand_map = false,
+      create_build_effect_smoke = false,
+    })
+    local cell = design.tiers[t]
+    drop_render(cell)
+    cell.tier = t - 1
+    cell.radar, cell.marker = nil, nil
+    design.tiers[t - 1] = cell
+  end
+  design.tiers[max] = nil
+  wipe_area(surface, surf.area(design.id, max))
+
+  design.deleted_tiers = design.deleted_tiers or {}
+  design.deleted_tiers[#design.deleted_tiers + 1] = tier
+
+  for t = tier, max - 1 do
+    local cell = design.tiers[t]
+    surf.prepare_cell(cell, design, force)   -- re-find the moved marker and radar, redraw outline/label
+    refresh_export(design, cell)
+  end
+  return true
+end
+
+-- Delete a whole design: every tier's cell is cleared. The caller handles placed copies and editors.
+function M.delete(design)
+  local surface = surf.get()
+  for t, cell in pairs(design.tiers) do
+    drop_render(cell)
+    wipe_area(surface, surf.area(design.id, t))
+  end
+  storage.designs[design.id] = nil
+end
+
 -- Is this cursor thing a blueprint we can read? Accepts an item stack or a library record.
 function M.readable_blueprint(player)
   local stack = player.cursor_stack
@@ -95,12 +206,15 @@ function M.readable_blueprint(player)
   return nil
 end
 
--- Returns design_id, tier from the marker inside a blueprint (or nil).
+-- Returns design_id, tier from the marker inside a blueprint (or nil). tier is nil if it was deleted.
 function M.identify(blueprint)
   local entities = blueprint.get_blueprint_entities() or {}
   for _, e in pairs(entities) do
     if e.name == M.MARKER and e.tags and e.tags.bpd_design then
-      return e.tags.bpd_design, e.tags.bpd_tier or 1, e.tags.bpd_version
+      local id, tier = e.tags.bpd_design, e.tags.bpd_tier or 1
+      local design = M.get(id)
+      if design then tier = M.resolve_tier(design, tier, e.tags.bpd_rev) end
+      return id, tier, e.tags.bpd_version
     end
   end
   return nil
@@ -218,14 +332,11 @@ function M.save(design, tier, force)
     cell.snapshot = snapshot
     cell.snapshots = cell.snapshots or {}
     cell.snapshots[cell.version] = snapshot
+    cell.saved_tick = game.tick
   end
 
   if marker_index then
-    stack.set_blueprint_entity_tags(marker_index, {
-      bpd_design = design.id,
-      bpd_tier = tier,
-      bpd_version = cell.version,
-    })
+    stack.set_blueprint_entity_tags(marker_index, M.marker_tags(design, tier, cell.version))
   end
   stack.label = design.name .. " T" .. tier
   cell.export = stack.export_stack()

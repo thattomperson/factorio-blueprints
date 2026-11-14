@@ -30,6 +30,7 @@ local function new_surface(name) local s = {name=name, valid=true}
     for _,e in ipairs(entities) do if e.valid and e.surface==s and e.position.x>=p.destination_area.left_top.x and e.position.x<=p.destination_area.right_bottom.x and e.position.y>=p.destination_area.left_top.y and e.position.y<=p.destination_area.right_bottom.y then e.valid=false end end
     local snap={} for _,e in ipairs(entities) do snap[#snap+1]=e end
     for _,e in ipairs(snap) do if e.valid and e.surface==s and e.position.x>=p.source_area.left_top.x and e.position.x<=p.source_area.right_bottom.x and e.position.y>=p.source_area.left_top.y and e.position.y<=p.source_area.right_bottom.y then s.create_entity{name=e.name,type=e.type,position={x=e.position.x+dx,y=e.position.y+dy}} end end end
+  s.set_tiles=function(t) s.tiles_set=(s.tiles_set or 0)+#t end
   s.find_entities_filtered=function(f) local r={} for _,e in ipairs(entities) do if e.valid and e.surface==s and (not f.name or e.name==f.name) and in_area(e.position, f.area) then r[#r+1]=e end end return r end
   return s end
 local nauvis = new_surface("nauvis"); nauvis.index=1; surfaces[1]=nauvis
@@ -50,7 +51,7 @@ game = { surfaces = surfaces, tick=0 }
 game.create_surface=function(n) local s=new_surface(n) s.index=2 surfaces[n]=s surfaces[2]=s return s end
 game.create_inventory=function() return { valid=true, [1]=blueprint_stack() } end
 rendering = { draw_rectangle=function() return {valid=true, destroy=function() end} end, draw_text=function() return {valid=true, destroy=function() end} end }
-local gui_root=function() local root={children={}} root.add=function(p) local el={name=p.name, tags=p.tags, style={}, children={}, valid=true} el.add=root.add el.destroy=function() el.valid=false if p.name then root[p.name]=nil end end if p.name then root[p.name]=el end return el end return root end
+local gui_root=function() local root={children={}} root.add=function(p) local el={name=p.name, tags=p.tags, style={}, children={}, valid=true} el.add=root.add el.add_tab=function() end el.destroy=function() el.valid=false if p.name then root[p.name]=nil end end if p.name then root[p.name]=el end return el end return root end
 local player = { index=1, force={chart=function() end}, controller_type=1, surface=nauvis, cursor_stack=blueprint_stack(), printed={},
   gui={screen=gui_root(), top=gui_root()} }
 player.print=function(m) player.printed[#player.printed+1]=m end
@@ -145,7 +146,107 @@ handlers.on_gui_click({player_index=1, element={tags={bpd="upgrade", inst=inst.i
 local lampbuilt; for _,b in ipairs(orders.built) do if b.name=="lamp" then lampbuilt=b end end
 check(inst.tier==2 and lampbuilt, "upgrade to T2 places the new lamp ghost")
 check(math.abs(lampbuilt.pos.x - (inst.marker.position.x - 0)) < 1e9, "lamp placed at transformed position")
+-- downgrade back to T1: the lamp that T2 added is marked for removal
+local lampsnap; for _,e in ipairs(d1.tiers[2].snapshot) do if e.name=="lamp" then lampsnap=e end end
+local wl = nauvis.create_entity{name="lamp", position=T.world(inst.t, inst.marker.position, lampsnap.position)}
+local dbefore=#orders.decon
+handlers.on_gui_click({player_index=1, element={tags={bpd="downgrade", inst=inst.id}}})
+check(inst.tier==1 and inst.version==d1.tiers[1].version, "downgrade moves copy to T1 latest")
+local lampgone=false for i=dbefore+1,#orders.decon do if orders.decon[i]==wl then lampgone=true end end
+check(lampgone, "downgrade marks the T2-only lamp for removal")
+handlers.on_gui_click({player_index=1, element={tags={bpd="downgrade", inst=inst.id}}})
+check(inst.tier==1 and player.printed[#player.printed][1]=="bpd.err-lowest-tier", "cannot downgrade below T1")
+handlers.on_gui_click({player_index=1, element={tags={bpd="upgrade", inst=inst.id}}})
+check(inst.tier==2, "upgraded back to T2")
 local before=#orders.decon
 handlers.on_gui_click({player_index=1, element={tags={bpd="force", inst=inst.id}}})
 print("force match decon ordered:", #orders.decon-before, "builds:", #orders.built)
+-- ===== delete tier =====
+local DS = require("scripts.designs")
+-- create T3 from T2 with an extra pole, save it, and remember its saved blueprint tags
+handlers.on_gui_click({player_index=1, element={tags={bpd="edit", design=1}}})
+handlers.on_gui_click({player_index=1, element={tags={bpd="goto_tier", tier=2}}})
+handlers.on_gui_click({player_index=1, element={tags={bpd="new_tier"}}})
+check(storage.editing[1].tier==3, "T3 created")
+surfaces["bpd-designer"].create_entity{name="small-electric-pole", position={x=512+20.5,y=0.5}}
+handlers.on_gui_click({player_index=1, element={tags={bpd="save"}}})
+local t3_tags; for _,e in ipairs(storage.scratch[1].ents) do if e.name=="bpd-marker" then t3_tags=e.tags end end
+check(t3_tags.bpd_tier==3 and t3_tags.bpd_rev==0, "T3 blueprint tagged tier 3, rev 0")
+local t3_version = d1.tiers[3].version
+-- go to T2 (has the tracked copy) and ask to delete
+handlers.on_gui_click({player_index=1, element={tags={bpd="goto_tier", tier=2}}})
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier"}}})
+check(player.gui.screen.bpd_confirm_delete_tier ~= nil, "delete asks for confirmation")
+check(DS.max_tier(d1)==3, "nothing deleted before confirming")
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier_confirm", design=1, tier=2}}})
+check(DS.max_tier(d1)==2 and d1.tiers[3]==nil, "design now has 2 tiers")
+check(d1.tiers[2].tier==2 and d1.tiers[2].version==t3_version, "old T3 moved down to T2 with its versions")
+check(storage.instances[inst.id]==nil and not inst.marker.valid, "copy on deleted tier unlinked and its marker removed")
+check(storage.editing[1].tier==1, "editor moved to T1")
+local pole2=false for _,e in ipairs(entities) do if e.valid and e.name=="small-electric-pole" and e.surface.name=="bpd-designer" then
+  if e.position.x>200 and e.position.x<400 then pole2=true end
+  check(e.position.x<400, "no pole left in the old T3 column") end end
+check(pole2, "old T3 contents now in the T2 column")
+local m2=0 for _,e in ipairs(entities) do if e.valid and e.name=="bpd-marker" and e.surface.name=="bpd-designer" then m2=m2+1 end end
+check(m2==2, "one marker per remaining cell ("..m2..")")
+check(d1.tiers[2].marker.valid and d1.tiers[2].marker.position.x==256.5, "T2 marker re-found in its column")
+check(DS.resolve_tier(d1,3,0)==2 and DS.resolve_tier(d1,2,0)==nil and DS.resolve_tier(d1,1,0)==1 and DS.resolve_tier(d1,2,1)==2, "old tier numbers resolve")
+-- placing the old T3 blueprint registers a copy on (new) T2
+game.tick = 9
+local mg3 = nauvis.create_entity{name="entity-ghost", type="entity-ghost", inner_name="bpd-marker", position={x=300.5,y=300.5}}
+handlers.on_built_entity({entity=mg3, player_index=1, tags=t3_tags})
+local inst3; for _,i in pairs(storage.instances) do inst3=i end
+check(inst3 and inst3.tier==2 and inst3.version==t3_version, "old T3 blueprint maps to T2")
+-- a blueprint of the deleted tier is not tracked
+local mgx = nauvis.create_entity{name="entity-ghost", type="entity-ghost", inner_name="bpd-marker", position={x=400.5,y=400.5}}
+handlers.on_built_entity({entity=mgx, player_index=1, tags={bpd_design=1, bpd_tier=2, bpd_version=1}})
+local n=0 for _ in pairs(storage.instances) do n=n+1 end
+check(n==1 and not mgx.valid, "blueprint of the deleted tier is dropped")
+-- delete down to one tier, then the last one is refused
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier_confirm", design=1, tier=1}}})
+check(DS.max_tier(d1)==1 and inst3.tier==1, "deleting T1 moves T2 (and its copy) down")
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier"}}})
+check(player.gui.screen.bpd_confirm_delete_tier == nil and DS.max_tier(d1)==1, "only tier cannot be deleted")
+-- ===== new GUI: designs window, copies window, delete design =====
+local U = function() return storage.ui[1] end
+handlers.on_gui_click({player_index=1, element={tags={bpd="save_return"}}})
+player.cursor_stack.clear()
+handlers["bpd-toggle"]({player_index=1})
+check(player.gui.screen.bpd_window ~= nil and U().selected==1 and #U().refs.list.items==1, "designs window lists design 1 and selects it")
+handlers.on_gui_text_changed({player_index=1, element={tags={bpd="search"}, text="zzz"}})
+check(#U().refs.list.items==0, "search filters the list")
+handlers.on_gui_text_changed({player_index=1, element={tags={bpd="search"}, text=""}})
+check(#U().refs.list.items==1, "clearing the search shows it again")
+handlers.on_gui_click({player_index=1, element={tags={bpd="import"}}})
+check(player.printed[#player.printed][1]=="bpd.import-hold", "import with an empty cursor asks for a blueprint")
+handlers.on_gui_click({player_index=1, element={tags={bpd="new"}}})
+check(storage.editing[1] and storage.editing[1].design_id==2, "new design opens the editor")
+surfaces["bpd-designer"].create_entity{name="lamp", position={x=4.5,y=256+4.5}}
+handlers.on_gui_click({player_index=1, element={tags={bpd="save_return"}}})
+check(DS.get(2).tiers[1].version==1 and DS.get(2).tiers[1].saved_tick~=nil, "design 2 saved with a timestamp")
+handlers["bpd-toggle"]({player_index=1})
+handlers.on_gui_text_changed({player_index=1, element={tags={bpd="rename", design=2}, text="Lamp block"}})
+check(DS.get(2).name=="Lamp block", "rename from the details pane")
+handlers.on_gui_selection_state_changed({player_index=1, element={tags={bpd="design_list"}, selected_index=1}})
+check(U().selected==1, "picking a list item selects that design")
+handlers.on_gui_click({player_index=1, element={tags={bpd="copies", design=1}}})
+check(player.gui.screen.bpd_copies ~= nil and #U().copies.visible==1, "copies window shows design 1's copy")
+handlers.on_gui_selection_state_changed({player_index=1, element={tags={bpd="filter_status"}, selected_index=2}})
+check(#U().copies.visible==0, "outdated-only filter hides the up-to-date copy")
+handlers.on_gui_selection_state_changed({player_index=1, element={tags={bpd="filter_status"}, selected_index=1}})
+handlers.on_gui_selected_tab_changed({player_index=1, element={tags={bpd="copies_tab"}, selected_tab_index=2}})
+check(U().copies.tab==2 and #U().copies.visible==1, "T1 tab shows the T1 copy")
+handlers.on_gui_checked_state_changed({player_index=1, element={tags={bpd="select_all"}, state=true}})
+check(U().copies.selected[inst3.id]==true, "select all selects the visible copy")
+handlers.on_gui_click({player_index=1, element={tags={bpd="bulk_downgrade"}}})
+check(inst3.tier==1, "bulk downgrade on T1 does nothing")
+handlers.on_gui_click({player_index=1, element={tags={bpd="back", design=1}}})
+check(player.gui.screen.bpd_window ~= nil and player.gui.screen.bpd_copies == nil, "back returns to the designs window")
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_design", design=1}}})
+check(player.gui.screen.bpd_confirm_delete_design ~= nil and DS.get(1) ~= nil, "delete design asks first")
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_design_confirm", design=1}}})
+check(DS.get(1)==nil and storage.instances[inst3.id]==nil, "design deleted and its copy unlinked")
+check(U().selected==2 and player.gui.screen.bpd_window ~= nil, "designs window reopens on the remaining design")
+local left=0 for _,e in ipairs(entities) do if e.valid and e.surface.name=="bpd-designer" and e.position.y<128 then left=left+1 end end
+check(left==0, "design 1's cells are empty")
 print("all passed")
