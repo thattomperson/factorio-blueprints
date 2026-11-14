@@ -146,6 +146,18 @@ handlers.on_gui_click({player_index=1, element={tags={bpd="upgrade", inst=inst.i
 local lampbuilt; for _,b in ipairs(orders.built) do if b.name=="lamp" then lampbuilt=b end end
 check(inst.tier==2 and lampbuilt, "upgrade to T2 places the new lamp ghost")
 check(math.abs(lampbuilt.pos.x - (inst.marker.position.x - 0)) < 1e9, "lamp placed at transformed position")
+-- downgrade back to T1: the lamp that T2 added is marked for removal
+local lampsnap; for _,e in ipairs(d1.tiers[2].snapshot) do if e.name=="lamp" then lampsnap=e end end
+local wl = nauvis.create_entity{name="lamp", position=T.world(inst.t, inst.marker.position, lampsnap.position)}
+local dbefore=#orders.decon
+handlers.on_gui_click({player_index=1, element={tags={bpd="downgrade", inst=inst.id}}})
+check(inst.tier==1 and inst.version==d1.tiers[1].version, "downgrade moves copy to T1 latest")
+local lampgone=false for i=dbefore+1,#orders.decon do if orders.decon[i]==wl then lampgone=true end end
+check(lampgone, "downgrade marks the T2-only lamp for removal")
+handlers.on_gui_click({player_index=1, element={tags={bpd="downgrade", inst=inst.id}}})
+check(inst.tier==1 and player.printed[#player.printed][1]=="bpd.err-lowest-tier", "cannot downgrade below T1")
+handlers.on_gui_click({player_index=1, element={tags={bpd="upgrade", inst=inst.id}}})
+check(inst.tier==2, "upgraded back to T2")
 local before=#orders.decon
 handlers.on_gui_click({player_index=1, element={tags={bpd="force", inst=inst.id}}})
 print("force match decon ordered:", #orders.decon-before, "builds:", #orders.built)
