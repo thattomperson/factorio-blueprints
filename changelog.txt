@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.5
+Date: 2026-11-14
+  Features:
+    - Redesign the Designs, Copies and editing-bar GUIs.
+    - Downgrade placed copies to the previous tier.
+    - Delete blueprint tiers from the editing bar.
+---------------------------------------------------------------------------------------------------
 Version: 0.2.4
 Date: 2026-11-14
   Features:

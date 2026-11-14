@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Entries are generated f
 [Conventional Commits](https://www.conventionalcommits.org/) by `npm run release`; the in-game
 `changelog.txt` is generated from the same commits.
 
+## [0.2.5](https://github.com/thattomperson/factorio-blueprints/compare/v0.2.4...v0.2.5) (2026-11-14)
+
+### Features
+
+* delete blueprint tiers from the editing bar ([d0760fc](https://github.com/thattomperson/factorio-blueprints/commit/d0760fc2d4428d28fb89f4f230f005b7dc1304da))
+* downgrade placed copies to the previous tier ([ffbadbd](https://github.com/thattomperson/factorio-blueprints/commit/ffbadbd5412f49dec9e44d7e6539d7c1cd55da66))
+* redesign the Designs, Copies and editing-bar GUIs ([67cb93c](https://github.com/thattomperson/factorio-blueprints/commit/67cb93c1f5f23bd5e065ad5d7a4e83cb81646d04))
+
 ## 0.2.4 (2026-11-14)
 
 ### Features
