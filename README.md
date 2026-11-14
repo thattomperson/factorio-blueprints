@@ -21,6 +21,10 @@ Copy or symlink this folder into your Factorio `mods` directory as `blueprint-de
 
 * While editing, **New tier** copies the current tier into the next one (e.g. T1 stone furnaces -> T2, then swap
   in steel furnaces). The T1/T2 buttons switch between tiers.
+* **Delete tier** (on the editing bar, asks first) removes the tier you are editing and clears its design area.
+  Later tiers move down one; their placed copies and saved blueprints keep working. Copies placed from the
+  deleted tier are unlinked: their buildings stay, but they are no longer tracked. A design's only tier can't
+  be deleted.
 * Every blueprint the mod saves contains a small design marker. Wherever you place it, that copy is tracked
   (hold Alt to see its label).
 * Designs window -> **Copies** lists every placed copy, flags outdated ones, and offers:

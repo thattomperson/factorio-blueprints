@@ -30,6 +30,7 @@ local function new_surface(name) local s = {name=name, valid=true}
     for _,e in ipairs(entities) do if e.valid and e.surface==s and e.position.x>=p.destination_area.left_top.x and e.position.x<=p.destination_area.right_bottom.x and e.position.y>=p.destination_area.left_top.y and e.position.y<=p.destination_area.right_bottom.y then e.valid=false end end
     local snap={} for _,e in ipairs(entities) do snap[#snap+1]=e end
     for _,e in ipairs(snap) do if e.valid and e.surface==s and e.position.x>=p.source_area.left_top.x and e.position.x<=p.source_area.right_bottom.x and e.position.y>=p.source_area.left_top.y and e.position.y<=p.source_area.right_bottom.y then s.create_entity{name=e.name,type=e.type,position={x=e.position.x+dx,y=e.position.y+dy}} end end end
+  s.set_tiles=function(t) s.tiles_set=(s.tiles_set or 0)+#t end
   s.find_entities_filtered=function(f) local r={} for _,e in ipairs(entities) do if e.valid and e.surface==s and (not f.name or e.name==f.name) and in_area(e.position, f.area) then r[#r+1]=e end end return r end
   return s end
 local nauvis = new_surface("nauvis"); nauvis.index=1; surfaces[1]=nauvis
@@ -148,4 +149,50 @@ check(math.abs(lampbuilt.pos.x - (inst.marker.position.x - 0)) < 1e9, "lamp plac
 local before=#orders.decon
 handlers.on_gui_click({player_index=1, element={tags={bpd="force", inst=inst.id}}})
 print("force match decon ordered:", #orders.decon-before, "builds:", #orders.built)
+-- ===== delete tier =====
+local DS = require("scripts.designs")
+-- create T3 from T2 with an extra pole, save it, and remember its saved blueprint tags
+handlers.on_gui_click({player_index=1, element={tags={bpd="edit", design=1}}})
+handlers.on_gui_click({player_index=1, element={tags={bpd="goto_tier", tier=2}}})
+handlers.on_gui_click({player_index=1, element={tags={bpd="new_tier"}}})
+check(storage.editing[1].tier==3, "T3 created")
+surfaces["bpd-designer"].create_entity{name="small-electric-pole", position={x=512+20.5,y=0.5}}
+handlers.on_gui_click({player_index=1, element={tags={bpd="save"}}})
+local t3_tags; for _,e in ipairs(storage.scratch[1].ents) do if e.name=="bpd-marker" then t3_tags=e.tags end end
+check(t3_tags.bpd_tier==3 and t3_tags.bpd_rev==0, "T3 blueprint tagged tier 3, rev 0")
+local t3_version = d1.tiers[3].version
+-- go to T2 (has the tracked copy) and ask to delete
+handlers.on_gui_click({player_index=1, element={tags={bpd="goto_tier", tier=2}}})
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier"}}})
+check(player.gui.screen.bpd_confirm_delete_tier ~= nil, "delete asks for confirmation")
+check(DS.max_tier(d1)==3, "nothing deleted before confirming")
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier_confirm", design=1, tier=2}}})
+check(DS.max_tier(d1)==2 and d1.tiers[3]==nil, "design now has 2 tiers")
+check(d1.tiers[2].tier==2 and d1.tiers[2].version==t3_version, "old T3 moved down to T2 with its versions")
+check(storage.instances[inst.id]==nil and not inst.marker.valid, "copy on deleted tier unlinked and its marker removed")
+check(storage.editing[1].tier==1, "editor moved to T1")
+local pole2=false for _,e in ipairs(entities) do if e.valid and e.name=="small-electric-pole" and e.surface.name=="bpd-designer" then
+  if e.position.x>200 and e.position.x<400 then pole2=true end
+  check(e.position.x<400, "no pole left in the old T3 column") end end
+check(pole2, "old T3 contents now in the T2 column")
+local m2=0 for _,e in ipairs(entities) do if e.valid and e.name=="bpd-marker" and e.surface.name=="bpd-designer" then m2=m2+1 end end
+check(m2==2, "one marker per remaining cell ("..m2..")")
+check(d1.tiers[2].marker.valid and d1.tiers[2].marker.position.x==256.5, "T2 marker re-found in its column")
+check(DS.resolve_tier(d1,3,0)==2 and DS.resolve_tier(d1,2,0)==nil and DS.resolve_tier(d1,1,0)==1 and DS.resolve_tier(d1,2,1)==2, "old tier numbers resolve")
+-- placing the old T3 blueprint registers a copy on (new) T2
+game.tick = 9
+local mg3 = nauvis.create_entity{name="entity-ghost", type="entity-ghost", inner_name="bpd-marker", position={x=300.5,y=300.5}}
+handlers.on_built_entity({entity=mg3, player_index=1, tags=t3_tags})
+local inst3; for _,i in pairs(storage.instances) do inst3=i end
+check(inst3 and inst3.tier==2 and inst3.version==t3_version, "old T3 blueprint maps to T2")
+-- a blueprint of the deleted tier is not tracked
+local mgx = nauvis.create_entity{name="entity-ghost", type="entity-ghost", inner_name="bpd-marker", position={x=400.5,y=400.5}}
+handlers.on_built_entity({entity=mgx, player_index=1, tags={bpd_design=1, bpd_tier=2, bpd_version=1}})
+local n=0 for _ in pairs(storage.instances) do n=n+1 end
+check(n==1 and not mgx.valid, "blueprint of the deleted tier is dropped")
+-- delete down to one tier, then the last one is refused
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier_confirm", design=1, tier=1}}})
+check(DS.max_tier(d1)==1 and inst3.tier==1, "deleting T1 moves T2 (and its copy) down")
+handlers.on_gui_click({player_index=1, element={tags={bpd="delete_tier"}}})
+check(player.gui.screen.bpd_confirm_delete_tier == nil and DS.max_tier(d1)==1, "only tier cannot be deleted")
 print("all passed")
