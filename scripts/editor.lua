@@ -174,6 +174,20 @@ function M.on_built(event)
   end
 end
 
+-- Safety net for things the game builds or marks without raising an event we see (tile ghosts from a
+-- blueprint paste, tile deconstruction): settle every cell someone is editing a few times a second.
+function M.on_nth_tick()
+  local done = {}
+  for _, ed in pairs(storage.editing) do
+    local key = ed.design_id .. ":" .. ed.tier
+    local design = not done[key] and designs.get(ed.design_id)
+    if design and design.tiers[ed.tier] then
+      designs.settle(design, ed.tier)
+      done[key] = true
+    end
+  end
+end
+
 function M.on_marked_for_deconstruction(event)
   local entity = event.entity
   if not is_designer(entity) then return end
@@ -181,11 +195,8 @@ function M.on_marked_for_deconstruction(event)
     entity.cancel_deconstruction(entity.force)
     return
   end
-  if entity.name == "deconstructible-tile-proxy" then
-    local pos = entity.position
-    local surface = entity.surface
-    entity.destroy()
-    surface.set_tiles({ { name = surf.lab_tile_at(pos), position = pos } }, true, false, true, false)
+  if entity.type == "deconstructible-tile-proxy" then
+    designs.remove_tile_at(entity)
     return
   end
   entity.destroy()

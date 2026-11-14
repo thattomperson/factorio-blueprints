@@ -169,9 +169,135 @@ function M.apply(ctx, plan)
   return counts
 end
 
+---------------------------------------------------------------------------------------------------
+-- Tiles. A tile list is { { name, position = tile centre relative to the marker } ... } (see designs.save).
+
+-- Compute what to do to turn tile list `old` into `new`: { place = {t...}, remove = {t...} }.
+function M.plan_tiles(old, new)
+  local plan = { place = {}, remove = {} }
+  local was = {}
+  for _, t in pairs(old or {}) do was[pos_key(t.position)] = t.name end
+  local now = {}
+  for _, t in pairs(new or {}) do
+    local k = pos_key(t.position)
+    now[k] = true
+    if was[k] ~= t.name then table.insert(plan.place, t) end
+  end
+  for _, t in pairs(old or {}) do
+    if not now[pos_key(t.position)] then table.insert(plan.remove, t) end
+  end
+  return plan
+end
+
+-- World tile position of a design-space tile centre at a copy.
+local function world_tile(ctx, t)
+  local c = transform.world(ctx.t, ctx.origin, t.position)
+  return { x = math.floor(c.x), y = math.floor(c.y) }
+end
+
+local function tile_ghosts_at(ctx, pos)
+  return ctx.surface.find_entities_filtered({
+    area = { { pos.x + 0.1, pos.y + 0.1 }, { pos.x + 0.9, pos.y + 0.9 } },
+    type = "tile-ghost", force = ctx.force,
+  })
+end
+
+-- Ghost `name` onto a world tile, unless it is already that tile (or already ghosted). Returns true if placed.
+local function place_tile(ctx, name, pos)
+  local ghosts = tile_ghosts_at(ctx, pos)
+  for _, g in pairs(ghosts) do
+    if g.valid and g.ghost_name == name then return false end
+  end
+  local tile = ctx.surface.get_tile(pos.x, pos.y)
+  if tile.valid and tile.name == name then
+    if tile.to_be_deconstructed(ctx.force) then tile.cancel_deconstruction(ctx.force, ctx.player) end
+    return false
+  end
+  for _, g in pairs(ghosts) do if g.valid then g.destroy() end end
+  local ok, ghost = pcall(ctx.surface.create_entity, {
+    name = "tile-ghost", inner_name = name, position = { x = pos.x + 0.5, y = pos.y + 0.5 },
+    force = ctx.force, player = ctx.player,
+  })
+  return ok and ghost ~= nil
+end
+
+-- Mark a world tile for removal if it is (or is ghosted as) `name`. Returns true if anything was done.
+local function remove_tile(ctx, name, pos)
+  local done = false
+  for _, g in pairs(tile_ghosts_at(ctx, pos)) do
+    if g.valid and g.ghost_name == name then g.destroy() done = true end
+  end
+  local tile = ctx.surface.get_tile(pos.x, pos.y)
+  if tile.valid and tile.name == name and not tile.to_be_deconstructed(ctx.force) then
+    if tile.order_deconstruction(ctx.force, ctx.player) then done = true end
+  end
+  return done
+end
+
+-- Apply a tile plan at a copy. Adds to counts.add / counts.remove.
+function M.apply_tiles(ctx, plan, counts)
+  for _, t in pairs(plan.remove) do
+    if remove_tile(ctx, t.name, world_tile(ctx, t)) then counts.remove = counts.remove + 1 end
+  end
+  for _, t in pairs(plan.place) do
+    if place_tile(ctx, t.name, world_tile(ctx, t)) then counts.add = counts.add + 1 end
+  end
+  return counts
+end
+
+-- Tiles a blueprint can hold (placeable by an item); natural ground is never touched by force match.
+local blueprintable
+local function blueprintable_tiles()
+  if not blueprintable then
+    blueprintable = {}
+    for name, proto in pairs(prototypes.tile) do
+      if proto.items_to_place_this and #proto.items_to_place_this > 0 then
+        blueprintable[#blueprintable + 1] = name
+      end
+    end
+  end
+  return blueprintable
+end
+
+-- Make the tiles inside `area` exactly match `tiles`: other placeable tiles are marked for removal,
+-- stray tile ghosts are dropped, and every master tile is ghosted where it differs.
+function M.force_match_tiles(ctx, tiles, area, counts)
+  local wanted = {}
+  for _, t in pairs(tiles or {}) do
+    local p = world_tile(ctx, t)
+    wanted[p.x .. "," .. p.y] = t.name
+  end
+  local box = { area.left_top, area.right_bottom }
+  for _, g in pairs(ctx.surface.find_entities_filtered({ area = box, type = "tile-ghost", force = ctx.force })) do
+    local p = g.position
+    if g.valid and wanted[math.floor(p.x) .. "," .. math.floor(p.y)] ~= g.ghost_name then
+      g.destroy()
+    end
+  end
+  local names = blueprintable_tiles()
+  if #names > 0 then
+    for _, tile in pairs(ctx.surface.find_tiles_filtered({ area = box, name = names })) do
+      local p = tile.position
+      local want = wanted[p.x .. "," .. p.y]
+      if want == nil and not tile.to_be_deconstructed(ctx.force) then
+        if tile.order_deconstruction(ctx.force, ctx.player) then counts.remove = counts.remove + 1 end
+      end
+    end
+  end
+  for _, t in pairs(tiles or {}) do
+    if place_tile(ctx, t.name, world_tile(ctx, t)) then counts.add = counts.add + 1 end
+  end
+  return counts
+end
+
 -- World footprint of a snapshot at a copy (bounding box of all its entities).
-function M.footprint(ctx, snapshot)
+function M.footprint(ctx, snapshot, tiles)
   local x1, y1, x2, y2 = math.huge, math.huge, -math.huge, -math.huge
+  for _, t in pairs(tiles or {}) do
+    local p = transform.world(ctx.t, ctx.origin, t.position)
+    x1, y1 = math.min(x1, p.x - 0.5), math.min(y1, p.y - 0.5)
+    x2, y2 = math.max(x2, p.x + 0.5), math.max(y2, p.y + 0.5)
+  end
   for _, s in pairs(snapshot) do
     local p = transform.world(ctx.t, ctx.origin, s.position)
     local proto = prototypes.entity[s.name]
@@ -183,11 +309,11 @@ function M.footprint(ctx, snapshot)
   return { left_top = { x = x1, y = y1 }, right_bottom = { x = x2, y = y2 } }
 end
 
--- Make the copy exactly match `snapshot`: remove everything else inside the footprint,
--- then (re)build every master entity, replacing whatever is in the way.
-function M.force_match(ctx, snapshot, keep)
+-- Make the copy exactly match `snapshot` (and `tiles`): remove everything else inside the footprint,
+-- then (re)build every master entity, replacing whatever is in the way, and match the tiles.
+function M.force_match(ctx, snapshot, keep, tiles)
   local counts = { add = 0, remove = 0, upgrade = 0, paste = 0 }
-  local area = M.footprint(ctx, snapshot)
+  local area = M.footprint(ctx, snapshot, tiles)
   if not area then return counts end
 
   local wanted = {}
@@ -214,6 +340,7 @@ function M.force_match(ctx, snapshot, keep)
     build_one(ctx, s, defines.build_mode.superforced)
     counts.add = counts.add + 1
   end
+  M.force_match_tiles(ctx, tiles, area, counts)
   return counts
 end
 
