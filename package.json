@@ -1,6 +1,6 @@
 {
   "name": "blueprint-designer",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "description": "Dev tooling for the Blueprint Designer Factorio mod (release, changelog, commit linting).",
   "scripts": {

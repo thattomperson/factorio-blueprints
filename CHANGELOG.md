@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Entries are generated f
 [Conventional Commits](https://www.conventionalcommits.org/) by `npm run release`; the in-game
 `changelog.txt` is generated from the same commits.
 
+## [0.2.6](https://github.com/thattomperson/factorio-blueprints/compare/v0.2.5...v0.2.6) (2026-11-14)
+
+### Bug Fixes
+
+* support tiles in designs and placed copies ([a0ecd12](https://github.com/thattomperson/factorio-blueprints/commit/a0ecd12e02dbfad7d7fe34eb15a6e40bb577ae57))
+
 ## [0.2.5](https://github.com/thattomperson/factorio-blueprints/compare/v0.2.4...v0.2.5) (2026-11-14)
 
 ### Features
