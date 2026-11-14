@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.0
+Date: 2026-11-14
+  Features:
+    - Tiers: "New tier" on the editing bar copies the current tier into the next one; tier buttons switch between them.
+    - Placed blueprints are tracked through their design marker, including rotation and flips.
+    - Copies window per design: Show, Update (safe), Upgrade to next tier, Force match, plus Update all / Upgrade all.
+    - Updates place ghosts for new entities, mark removed ones for deconstruction, and use upgrade orders for same-size replacements (e.g. stone to steel furnace).
+    - Alt-mode label over each placed copy's marker showing design, tier and version.
+    - Copying a placed copy (or a designer cell) into a new blueprint keeps it linked to its design.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.0
 Date: 2026-11-14
   Features:
