@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Entries are generated f
 [Conventional Commits](https://www.conventionalcommits.org/) by `npm run release`; the in-game
 `changelog.txt` is generated from the same commits.
 
+## 0.2.4 (2026-11-14)
+
+### Features
+
+* add blueprint tiers, placed-copy tracking and release tooling ([#1](https://github.com/thattomperson/factorio-blueprints/issues/1)) ([3731e77](https://github.com/thattomperson/factorio-blueprints/commit/3731e77e632dc14da129fb06e1011d8e51e57ace))
+
 ## 0.2.3 (2026-11-14)
 
 ### Features
