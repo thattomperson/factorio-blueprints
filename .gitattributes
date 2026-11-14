@@ -1,0 +1,14 @@
+# Files left out of the mod zip (built with `git archive` in the release workflow)
+.github/            export-ignore
+tests/              export-ignore
+tools/              export-ignore
+docs/               export-ignore
+node_modules/       export-ignore
+.gitattributes      export-ignore
+.gitignore          export-ignore
+.versionrc.json     export-ignore
+commitlint.config.mjs export-ignore
+package.json        export-ignore
+package-lock.json   export-ignore
+CHANGELOG.md        export-ignore
+CONTRIBUTING.md     export-ignore

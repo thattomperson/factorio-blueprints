@@ -26,13 +26,17 @@ end
 
 function M.enter(player, design, tier)
   tier = tier or 1
-  if storage.editing[player.index] then
-    M.leave(player, { save = true, deliver = false })
+  local current = storage.editing[player.index]
+  if current then
+    -- Switching cells while already on the designer: save the current one, stay in remote view.
+    local cur_design = designs.get(current.design_id)
+    if cur_design then designs.save(cur_design, current.tier, player.force) end
+    storage.editing[player.index] = nil
   end
   designs.ensure_tier(design, tier, player.force)
 
   storage.transitioning[player.index] = true
-  player.clear_cursor()
+  if not current then player.clear_cursor() end
   player.set_controller({
     type = defines.controllers.remote,
     surface = surf.get(),
@@ -75,6 +79,17 @@ function M.leave(player, opts)
     player.print({ "bpd.saved-empty", design.name })
   end
   M.on_change(player)
+end
+
+-- Add a tier copied from the one being edited, and move to it.
+function M.new_tier(player)
+  local ed = storage.editing[player.index]
+  local design = ed and designs.get(ed.design_id)
+  if not design then return end
+  designs.save(design, ed.tier, player.force)
+  local tier = designs.new_tier(design, ed.tier, player.force)
+  M.enter(player, design, tier)
+  player.print({ "bpd.tier-created", design.name, tier, ed.tier })
 end
 
 -- Save without leaving.

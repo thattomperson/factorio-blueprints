@@ -1,6 +1,6 @@
 # Blueprint Designer: design plan
 
-Target: Factorio 2.0 API (`factorio_version` in `info.json`; bump to `2.1` if your game refuses to load it). No Space Age dependency.
+Target: Factorio 2.1 (`factorio_version` in `info.json`). No Space Age dependency.
 
 ## Core idea
 
@@ -35,7 +35,7 @@ design 2  [ cell 2,1 ]  [ cell 2,2 ]                   256-tile spacing, marker 
 Known gaps in 0.1: editing a library blueprint gives you an updated *copy* in the cursor rather than overwriting
 the library entry; no blueprint book support; blueprints bigger than 224x224 get clipped.
 
-## Part 2: tiers / upgrades (next)
+## Part 2: tiers / upgrades (built, v0.2.0)
 
 * "New tier" button on the editing bar copies tier N's cell into tier N+1 (one column right), then you edit it,
   e.g. swap stone furnaces for steel furnaces.
@@ -49,7 +49,7 @@ the library entry; no blueprint book support; blueprints bigger than 224x224 get
 * "Upgrade to tier N+1" acts on one placed instance, or from the designs window on all instances of a tier.
 * Placed rotation/flip is applied when mapping snapshot offsets to world positions.
 
-## Part 3: instance tracking (after part 2)
+## Part 3: instance tracking (built, v0.2.0)
 
 * When a blueprint containing our marker is placed, `on_pre_build` gives the placement direction and flip, and
   the marker ghost's tags give design/tier/version. The mod revives marker ghosts instantly (no item needed)
@@ -62,8 +62,18 @@ the library entry; no blueprint book support; blueprints bigger than 224x224 get
   tier's snapshots by version (pruned once no instance references an old version).
 * Optional drift check: compare the world footprint against the snapshot to flag copies that were hand-edited.
 
-## Open question for Thomas
+## Decisions
 
-When updating placed copies, should the mod only apply what changed in the master (safe: leaves anything you
-added by hand, like a belt running through), or force each copy to match the master exactly (also removes
-hand-made additions inside the footprint)? Plan assumes the safe option, with exact-match as an opt-in.
+* Updating placed copies is **safe by default**: only what changed in the master between the copy's version and
+  the latest is applied, so hand-made additions survive. **Force match** (per copy) makes a copy exactly match:
+  anything else in its footprint is marked for deconstruction and every master entity is rebuilt superforced.
+
+## Known limitations (v0.2)
+
+* Circuit/copper wires are not part of diffs: newly ghosted entities come without wires, and wire-only edits
+  don't count as a change. Placing the whole blueprint again fixes wires.
+* Tile changes between versions/tiers are not applied to placed copies.
+* Mirrored (flipped) placements depend on the flip-then-rotate order assumed in `scripts/transform.lua`;
+  needs an in-game check.
+* Snapshots of old versions are kept forever (no pruning yet).
+* A blueprint you capture by hand on the designer surface gets the tags of the last *saved* version.

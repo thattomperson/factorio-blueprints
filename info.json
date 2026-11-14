@@ -1,9 +1,11 @@
 {
   "name": "blueprint-designer",
-  "version": "0.1.0",
+  "version": "0.2.3",
   "title": "Blueprint Designer",
   "author": "thattomperson",
-  "factorio_version": "2.0",
+  "factorio_version": "2.1",
   "description": "Design and edit blueprints on a dedicated editor surface. Planned: blueprint tiers with in-place upgrades, and tracking of every placed copy so they can all be updated at once.",
-  "dependencies": ["base >= 2.0.0"]
+  "dependencies": [
+    "base >= 2.1.0"
+  ]
 }

@@ -1,0 +1,63 @@
+name: Auto version
+
+# Every push to main that contains a feat/fix/perf (or breaking) commit since the last tag cuts a release:
+# bump info.json from the conventional commits, update CHANGELOG.md and changelog.txt, commit, tag, and
+# then run the release workflow (GitHub release + mod portal).
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release)') }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Anything releasable since the last tag?
+        id: check
+        run: |
+          LAST=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          RANGE=${LAST:+$LAST..HEAD}
+          if git log $RANGE --no-merges --format='%s%n%b' | grep -qE '^(feat|fix|perf)(\([^)]*\))?!?:|^[a-z]+(\([^)]*\))?!:|^BREAKING[ -]CHANGE:'; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No feat/fix/perf commits since ${LAST:-the beginning}; not releasing."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump version, changelogs, commit and tag
+        id: bump
+        if: steps.check.outputs.release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npx commit-and-tag-version
+          TAG="v$(jq -r .version info.json)"
+          git push --atomic origin HEAD:main "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: version
+    if: ${{ needs.version.outputs.tag != '' }}
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+    secrets:
+      FACTORIO_API_KEY: ${{ secrets.FACTORIO_API_KEY }}

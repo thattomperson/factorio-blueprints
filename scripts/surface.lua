@@ -75,19 +75,22 @@ function M.prepare_cell(cell, design, force)
   force.chart(surface, area)
 
   if not (cell.radar and cell.radar.valid) then
-    cell.radar = surface.create_entity({ name = "bpd-editor-radar", position = center, force = force })
+    cell.radar = surface.find_entity("bpd-editor-radar", center)
+      or surface.create_entity({ name = "bpd-editor-radar", position = center, force = force })
     if cell.radar then
       cell.radar.destructible = false
-      cell.radar.minable = false
+      cell.radar.minable_flag = false
     end
   end
 
   if not (cell.marker and cell.marker.valid) then
-    cell.marker = surface.find_entity("bpd-marker", center)
-      or surface.create_entity({ name = "bpd-marker", position = center, force = force })
+    -- 1x1 entities sit on tile centres, so the marker lives at centre + 0.5.
+    local marker_pos = { x = center.x + 0.5, y = center.y + 0.5 }
+    cell.marker = surface.find_entity("bpd-marker", marker_pos)
+      or surface.create_entity({ name = "bpd-marker", position = marker_pos, force = force })
   end
   cell.marker.destructible = false
-  cell.marker.minable = false
+  cell.marker.minable_flag = false
 
   if not (cell.outline and cell.outline.valid) then
     cell.outline = rendering.draw_rectangle({

@@ -1,0 +1,16 @@
+{
+  "name": "blueprint-designer",
+  "version": "0.2.3",
+  "private": true,
+  "description": "Dev tooling for the Blueprint Designer Factorio mod (release, changelog, commit linting).",
+  "scripts": {
+    "test": "python3 -I tests/run.py",
+    "release": "commit-and-tag-version",
+    "commitlint": "commitlint"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "commit-and-tag-version": "^13.3.0"
+  }
+}

@@ -9,10 +9,12 @@
 --   version,          -- bumped every time a save changes the content
 --   export,           -- blueprint export string of the latest saved version
 --   snapshot,         -- normalised entity list of the latest version (used by tier diffs / instance updates)
+--   snapshots,        -- { [version] = snapshot } for every saved version (old ones are diffed against)
 --   radar, marker, outline, label   -- runtime objects on the designer surface
 -- }
 
 local surf = require("scripts.surface")
+local deepcopy = require("scripts.copy")
 
 local M = {}
 
@@ -26,7 +28,7 @@ function M.init()
   end
 end
 
-local function scratch_blueprint()
+function M.scratch_blueprint()
   local stack = storage.scratch[1]
   stack.clear()
   stack.set_stack({ name = "blueprint", count = 1 })
@@ -52,6 +54,32 @@ function M.ensure_tier(design, tier, force)
   end
   surf.prepare_cell(cell, design, force)
   return cell
+end
+
+function M.max_tier(design)
+  local n = 0
+  for t in pairs(design.tiers) do if t > n then n = t end end
+  return n
+end
+
+-- Add the next tier, starting as an exact copy of `from_tier`'s cell. Returns the new tier number.
+function M.new_tier(design, from_tier, force)
+  local tier = M.max_tier(design) + 1
+  local cell = M.ensure_tier(design, tier, force)   -- generates chunks, radar, marker
+  local surface = surf.get()
+  surface.clone_area({
+    source_area = surf.area(design.id, from_tier),
+    destination_area = surf.area(design.id, tier),
+    destination_surface = surface,
+    clone_tiles = true,
+    clone_entities = true,
+    clone_decoratives = false,
+    clear_destination_entities = true,
+    expand_map = false,
+    create_build_effect_smoke = false,
+  })
+  surf.prepare_cell(cell, design, force)            -- re-find the cloned marker and radar
+  return tier
 end
 
 -- Is this cursor thing a blueprint we can read? Accepts an item stack or a library record.
@@ -143,8 +171,9 @@ local function normalise(entities, marker_index)
   local origin = entities[marker_index] and entities[marker_index].position or { x = 0, y = 0 }
   for i, e in pairs(entities) do
     if i ~= marker_index then
-      local copy = table.deepcopy(e)
+      local copy = deepcopy(e)
       copy.entity_number = nil
+      copy.wires = nil   -- wire references use entity numbers, which shift between captures
       copy.position = { x = e.position.x - origin.x, y = e.position.y - origin.y }
       list[#list + 1] = copy
     end
@@ -160,7 +189,7 @@ end
 -- Capture a design cell into a blueprint. Returns the scratch stack holding it (valid until next call).
 function M.save(design, tier, force)
   local cell = design.tiers[tier]
-  local stack = scratch_blueprint()
+  local stack = M.scratch_blueprint()
   stack.create_blueprint({
     surface = surf.get(),
     force = force,
@@ -187,6 +216,8 @@ function M.save(design, tier, force)
   if changed or cell.version == 0 then
     cell.version = cell.version + 1
     cell.snapshot = snapshot
+    cell.snapshots = cell.snapshots or {}
+    cell.snapshots[cell.version] = snapshot
   end
 
   if marker_index then

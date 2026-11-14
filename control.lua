@@ -1,11 +1,13 @@
 local surf = require("scripts.surface")
 local designs = require("scripts.designs")
 local editor = require("scripts.editor")
+local instances = require("scripts.instances")
 local gui = require("scripts.gui")
 
 local function init()
   designs.init()
   editor.init()
+  instances.init()
 end
 
 script.on_init(function()
@@ -63,7 +65,20 @@ script.on_event(defines.events.on_player_changed_surface, function(event)
   editor.check_left(game.get_player(event.player_index))
 end)
 
-script.on_event(defines.events.on_built_entity, editor.on_built)
+local function on_built(event)
+  local entity = event.entity
+  if not (entity and entity.valid) then return end
+  if entity.surface.name == surf.NAME then
+    editor.on_built(event)
+  elseif entity.type == "entity-ghost" and entity.ghost_name == designs.MARKER then
+    instances.on_marker_ghost(entity, event.tags, event.player_index)
+  end
+end
+script.on_event(defines.events.on_built_entity, on_built)
+script.on_event(defines.events.script_raised_built, on_built)
+script.on_event(defines.events.on_pre_build, instances.on_pre_build)
+script.on_event(defines.events.on_object_destroyed, instances.on_object_destroyed)
+script.on_event(defines.events.on_player_setup_blueprint, instances.on_player_setup_blueprint)
 script.on_event(defines.events.on_marked_for_deconstruction, editor.on_marked_for_deconstruction)
 script.on_event(defines.events.on_marked_for_upgrade, editor.on_marked_for_upgrade)
 
