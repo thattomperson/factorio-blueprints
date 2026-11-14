@@ -14,6 +14,7 @@
 -- }
 
 local surf = require("scripts.surface")
+local deepcopy = require("scripts.copy")
 
 local M = {}
 
@@ -170,7 +171,7 @@ local function normalise(entities, marker_index)
   local origin = entities[marker_index] and entities[marker_index].position or { x = 0, y = 0 }
   for i, e in pairs(entities) do
     if i ~= marker_index then
-      local copy = table.deepcopy(e)
+      local copy = deepcopy(e)
       copy.entity_number = nil
       copy.wires = nil   -- wire references use entity numbers, which shift between captures
       copy.position = { x = e.position.x - origin.x, y = e.position.y - origin.y }

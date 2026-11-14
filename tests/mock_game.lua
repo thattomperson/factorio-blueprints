@@ -1,7 +1,7 @@
 -- Minimal mock of the Factorio runtime, just enough to drive control.lua.
 local handlers, log = {}, {}
 serpent = { line = function(t) local function s(v) if type(v)=="table" then local k={} for a in pairs(v) do k[#k+1]=tostring(a) end table.sort(k) local o={} for _,a in ipairs(k) do o[#o+1]=a.."="..s(v[a] or v[tonumber(a)]) end return "{"..table.concat(o,",").."}" end return tostring(v) end return s(t) end }
-table.deepcopy = function(t) if type(t)~="table" then return t end local r={} for k,v in pairs(t) do r[k]=table.deepcopy(v) end return r end
+table.deepcopy = nil -- not available in the real runtime stage
 prototypes = { entity = setmetatable({}, {__index=function(_,n) return {tile_width=2,tile_height=2,fast_replaceable_group=(n:find('furnace') and 'furnace' or nil)} end}) }
 local orders = {upgrade={}, decon={}, built={}}
 defines = { events = setmetatable({}, {__index=function(_,k) return k end}), controllers = {character=1, remote=2, god=3}, build_mode={forced=1, superforced=2} }

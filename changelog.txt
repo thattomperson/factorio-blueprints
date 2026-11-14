@@ -1,4 +1,9 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.3
+Date: 2026-11-14
+  Bugfixes:
+    - Fixed a crash when saving a design: table.deepcopy does not exist at runtime (the mod has its own copy helper now).
+---------------------------------------------------------------------------------------------------
 Version: 0.2.2
 Date: 2026-11-14
   Bugfixes:

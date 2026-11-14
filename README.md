@@ -5,8 +5,8 @@ and known limitations.
 
 ## Install for testing
 
-Copy or symlink this folder into your Factorio `mods` directory as `blueprint-designer_0.2.2`
-(or zip it as `blueprint-designer_0.2.2.zip` containing a top-level `blueprint-designer_0.2.2/` folder).
+Copy or symlink this folder into your Factorio `mods` directory as `blueprint-designer_0.2.3`
+(or zip it as `blueprint-designer_0.2.3.zip` containing a top-level `blueprint-designer_0.2.3/` folder).
 
 ## Use
 

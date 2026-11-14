@@ -5,6 +5,7 @@
 -- its transform (scripts/transform.lua).
 
 local transform = require("scripts.transform")
+local deepcopy = require("scripts.copy")
 
 local M = {}
 
@@ -113,7 +114,7 @@ end
 
 -- Place one snapshot entity as a ghost (or paste its settings onto a matching entity already there).
 local function build_one(ctx, snap, mode)
-  local e = table.deepcopy(snap)
+  local e = deepcopy(snap)
   e.entity_number = 1
   e.position = { x = 0, y = 0 }
   e.wires = nil
