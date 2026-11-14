@@ -1,0 +1,66 @@
+name: PR build
+
+# Builds the mod zip for every push to a PR and keeps one PR comment pointing at the download.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Stage mod folder
+        id: mod
+        run: |
+          NAME=$(jq -r .name info.json)
+          VERSION=$(jq -r .version info.json)
+          FOLDER="${NAME}_${VERSION}"
+          mkdir -p dist
+          # Same file set as a release (export-ignore in .gitattributes), unpacked so the artifact
+          # download is itself a ready-to-use mod zip.
+          git archive --prefix="$FOLDER/" HEAD | tar -x -C dist
+          echo "folder=$FOLDER" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA_HEAD::7}" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_SHA_HEAD: ${{ github.event.pull_request.head.sha }}
+
+      - name: Upload artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          # The download is named <artifact name>.zip and contains the mod folder at its root.
+          name: ${{ steps.mod.outputs.folder }}
+          path: dist/
+          retention-days: 30
+
+      - name: Comment download link
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.upload.outputs.artifact-url }}
+          FOLDER: ${{ steps.mod.outputs.folder }}
+          SHA: ${{ steps.mod.outputs.short_sha }}
+        run: |
+          MARKER="<!-- pr-build-zip -->"
+          BODY=$(printf '%s\n### Test build\n\n[Download **%s.zip**](%s) (commit %s). Drop it into your Factorio `mods` folder as is.\n\n_Needs a GitHub login; kept for 30 days. Updated on every push._\n' \
+            "$MARKER" "$FOLDER" "$URL" "$SHA")
+          ID=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1)
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$BODY" > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$BODY" > /dev/null
+          fi

@@ -3,6 +3,15 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Called by auto-version.yml after it tags a release (tags pushed with GITHUB_TOKEN don't trigger workflows).
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      FACTORIO_API_KEY:
+        required: false
 
 permissions:
   contents: write
@@ -10,16 +19,20 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Read mod name and version
         id: mod
         run: |
           NAME=$(jq -r .name info.json)
           VERSION=$(jq -r .version info.json)
-          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match info.json version $VERSION"
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match info.json version $VERSION"
             exit 1
           fi
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
@@ -47,8 +60,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "${{ steps.mod.outputs.zip }}" \
-            --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+          gh release create "$TAG" "${{ steps.mod.outputs.zip }}" \
+            --title "$TAG" --notes-file notes.md --verify-tag
 
       - name: Upload to the Factorio mod portal
         env:
