@@ -78,3 +78,9 @@ data:extend({
     pictures = { filename = EMPTY, size = 1, direction_count = 1 },
   },
 })
+
+-- GUI icons for moving placed copies between tiers (vanilla has no up arrow utility sprite).
+data:extend({
+  { type = "sprite", name = "bpd-arrow-up", filename = "__blueprint-designer__/graphics/arrow-up.png", size = 32, flags = { "gui-icon" } },
+  { type = "sprite", name = "bpd-arrow-down", filename = "__blueprint-designer__/graphics/arrow-down.png", size = 32, flags = { "gui-icon" } },
+})
