@@ -217,4 +217,10 @@ function M.upgrade(inst, player)
   return M.apply(inst, player, inst.tier + 1, "safe")
 end
 
+-- The reverse of upgrade: diff from this copy's current tier/version back to the previous tier's latest.
+function M.downgrade(inst, player)
+  if inst.tier <= 1 then return nil, "bpd.err-lowest-tier" end
+  return M.apply(inst, player, inst.tier - 1, "safe")
+end
+
 return M

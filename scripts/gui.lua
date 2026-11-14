@@ -1,6 +1,6 @@
 -- GUIs:
 --   * Designs window (screen): designs with Edit / Get blueprint / Copies, plus New design
---   * Copies window (screen): placed copies of one design with Update / Upgrade / Force match / Show
+--   * Copies window (screen): placed copies of one design with Update / Downgrade / Upgrade / Force match / Show
 --   * Editing bar (top): while on the designer: tier switcher, New tier, Delete tier, Save, Save & return
 --   * Delete-tier confirmation (screen)
 
@@ -84,12 +84,18 @@ function M.open_copies(player, design_id)
       actions.add({ type = "button", caption = { "bpd.upgrade-all", t, t + 1 }, tags = { bpd = "upgrade_all", design = design_id, tier = t } })
     end
   end
+  for t = 2, designs.max_tier(design) do
+    local prev_cell = design.tiers[t - 1]
+    if prev_cell and prev_cell.version > 0 and instances.count_on_tier(design_id, t) > 0 then
+      actions.add({ type = "button", caption = { "bpd.downgrade-all", t, t - 1 }, tags = { bpd = "downgrade_all", design = design_id, tier = t } })
+    end
+  end
 
   local list = instances.for_design(design_id)
   if #list == 0 then
     scroll.add({ type = "label", caption = { "bpd.no-copies" } })
   else
-    local tbl = scroll.add({ type = "table", column_count = 6 })
+    local tbl = scroll.add({ type = "table", column_count = 6 })  -- label, show, update, downgrade, upgrade, force
     tbl.style.horizontal_spacing = 8
     for _, inst in pairs(list) do
       local cell = design.tiers[inst.tier]
@@ -99,11 +105,13 @@ function M.open_copies(player, design_id)
         math.floor(inst.position.x), math.floor(inst.position.y) }, "  ", status } })
       tbl.add({ type = "button", caption = { "bpd.show" }, tags = { bpd = "show", inst = inst.id } })
       tbl.add({ type = "button", caption = { "bpd.update" }, tags = { bpd = "update", inst = inst.id } })
+      local prev_cell = design.tiers[inst.tier - 1]
+      local down = tbl.add({ type = "button", caption = { "bpd.downgrade", math.max(1, inst.tier - 1) }, tags = { bpd = "downgrade", inst = inst.id } })
+      down.enabled = prev_cell ~= nil and prev_cell.version > 0
       local next_cell = design.tiers[inst.tier + 1]
       local up = tbl.add({ type = "button", caption = { "bpd.upgrade", inst.tier + 1 }, tags = { bpd = "upgrade", inst = inst.id } })
       up.enabled = next_cell ~= nil and next_cell.version > 0
       tbl.add({ type = "button", caption = { "bpd.force-match" }, style = "red_button", tooltip = { "bpd.force-match-tooltip" }, tags = { bpd = "force", inst = inst.id } })
-      tbl.add({ type = "empty-widget" })
     end
   end
   player.opened = frame
@@ -244,12 +252,20 @@ function M.on_click(event)
   elseif action == "upgrade" and inst then
     report(player, instances.upgrade(inst, player))
     M.open_copies(player, inst.design)
+  elseif action == "downgrade" and inst then
+    report(player, instances.downgrade(inst, player))
+    M.open_copies(player, inst.design)
   elseif action == "force" and inst then
     report(player, instances.update(inst, player, "exact"))
     M.open_copies(player, inst.design)
   elseif action == "update_all" then
     run_all(player, tags.design, function(i)
       if instances.is_outdated(i) then return instances.update(i, player, "safe") end
+    end)
+    M.open_copies(player, tags.design)
+  elseif action == "downgrade_all" then
+    run_all(player, tags.design, function(i)
+      if i.tier == tags.tier then return instances.downgrade(i, player) end
     end)
     M.open_copies(player, tags.design)
   elseif action == "upgrade_all" then
