@@ -31,8 +31,9 @@ Copy or symlink this folder into your Factorio `mods` directory as `blueprint-de
   * **Update**: apply what changed in the master since that copy was placed (hand-made additions are left alone).
   * **Upgrade to T(n+1)**: ghosts the new stuff, marks removed things for deconstruction, upgrades same-size
     replacements in place.
+  * **Downgrade to T(n-1)**: the reverse of Upgrade, moving the copy back to the previous tier.
   * **Force match**: make the copy exactly match the master, removing anything extra in its footprint.
-  * **Update all outdated** / **Upgrade all Tn -> Tn+1**.
+  * **Update all outdated** / **Upgrade all Tn -> Tn+1** / **Downgrade all Tn -> Tn-1**.
 
 ## Contributing and releases
 
