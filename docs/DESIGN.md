@@ -73,12 +73,16 @@ the library entry; no blueprint book support; blueprints bigger than 224x224 get
 * Updating placed copies is **safe by default**: only what changed in the master between the copy's version and
   the latest is applied, so hand-made additions survive. **Force match** (per copy) makes a copy exactly match:
   anything else in its footprint is marked for deconstruction and every master entity is rebuilt superforced.
+* **Tiles** (concrete, paths, ...) are part of a design. On the designer, tile ghosts are built at once and
+  deconstructed tiles go straight back to lab floor (a sweep every 30 ticks catches any the game didn't raise an
+  event for). Each saved version stores its tiles relative to the marker; a tile-only edit is a new version.
+  Updating a copy ghosts changed tiles and marks removed ones for deconstruction; Force match also removes any
+  other placeable tile in the footprint. The lab floor is never captured.
 
 ## Known limitations (v0.2)
 
 * Circuit/copper wires are not part of diffs: newly ghosted entities come without wires, and wire-only edits
   don't count as a change. Placing the whole blueprint again fixes wires.
-* Tile changes between versions/tiers are not applied to placed copies.
 * Mirrored (flipped) placements depend on the flip-then-rotate order assumed in `scripts/transform.lua`;
   needs an in-game check.
 * Snapshots of old versions are kept forever (no pruning yet).

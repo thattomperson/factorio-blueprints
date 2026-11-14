@@ -2,10 +2,10 @@
 local handlers, log = {}, {}
 serpent = { line = function(t) local function s(v) if type(v)=="table" then local k={} for a in pairs(v) do k[#k+1]=tostring(a) end table.sort(k) local o={} for _,a in ipairs(k) do o[#o+1]=a.."="..s(v[a] or v[tonumber(a)]) end return "{"..table.concat(o,",").."}" end return tostring(v) end return s(t) end }
 table.deepcopy = nil -- not available in the real runtime stage
-prototypes = { entity = setmetatable({}, {__index=function(_,n) return {tile_width=2,tile_height=2,fast_replaceable_group=(n:find('furnace') and 'furnace' or nil)} end}) }
-local orders = {upgrade={}, decon={}, built={}}
+prototypes = { tile = { concrete={items_to_place_this={{name="concrete"}}}, ["refined-concrete"]={items_to_place_this={{name="refined-concrete"}}}, ["stone-path"]={items_to_place_this={{name="stone-brick"}}}, ["lab-dark-1"]={}, ["lab-dark-2"]={}, grass={} }, entity = setmetatable({}, {__index=function(_,n) return {tile_width=2,tile_height=2,fast_replaceable_group=(n:find('furnace') and 'furnace' or nil)} end}) }
+local orders = {upgrade={}, decon={}, built={}, tile_decon={}}
 defines = { events = setmetatable({}, {__index=function(_,k) return k end}), controllers = {character=1, remote=2, god=3}, build_mode={forced=1, superforced=2} }
-script = { register_on_object_destroyed=function() end, on_init=function(f) handlers.init=f end, on_configuration_changed=function() end,
+script = { on_nth_tick=function(n,f) handlers.nth_tick=f end, register_on_object_destroyed=function() end, on_init=function(f) handlers.init=f end, on_configuration_changed=function() end,
   on_event=function(e,f) handlers[e]=f end }
 storage = {}
 local surfaces, entities = {}, {}
@@ -16,7 +16,9 @@ local function in_area(p, a) if not a then return true end
 local uid=0
 local function new_entity(p) uid=uid+1 local e = { unit_number=uid, direction=p.direction or 0, valid=true, name=p.name, type=p.type or p.name, position=p.position, force=p.force, surface=p.surface, ghost_name=p.inner_name }
   e.destroy=function() e.valid=false end
-  e.silent_revive=function() e.valid=false local r=new_entity{name=e.ghost_name, position=e.position, surface=e.surface, force={name="player"}} entities[#entities+1]=r return {}, r, nil end
+  e.silent_revive=function() e.valid=false
+    if e.type=="tile-ghost" then e.surface.set_tiles({{name=e.ghost_name, position={x=math.floor(e.position.x), y=math.floor(e.position.y)}}}) return {}, nil, nil end
+    local r=new_entity{name=e.ghost_name, position=e.position, surface=e.surface, force={name="player"}} entities[#entities+1]=r return {}, r, nil end
   e.cancel_deconstruction=function() end
   setmetatable(e, {__newindex=function(t,k,v) if k=='minable' then error('LuaEntity::minable is read only.') end rawset(t,k,v) end})
   e.order_upgrade=function(p) orders.upgrade[#orders.upgrade+1]={e=e,target=p.target.name} end
@@ -30,22 +32,47 @@ local function new_surface(name) local s = {name=name, valid=true}
     for _,e in ipairs(entities) do if e.valid and e.surface==s and e.position.x>=p.destination_area.left_top.x and e.position.x<=p.destination_area.right_bottom.x and e.position.y>=p.destination_area.left_top.y and e.position.y<=p.destination_area.right_bottom.y then e.valid=false end end
     local snap={} for _,e in ipairs(entities) do snap[#snap+1]=e end
     for _,e in ipairs(snap) do if e.valid and e.surface==s and e.position.x>=p.source_area.left_top.x and e.position.x<=p.source_area.right_bottom.x and e.position.y>=p.source_area.left_top.y and e.position.y<=p.source_area.right_bottom.y then s.create_entity{name=e.name,type=e.type,position={x=e.position.x+dx,y=e.position.y+dy}} end end end
-  s.set_tiles=function(t) s.tiles_set=(s.tiles_set or 0)+#t end
-  s.find_entities_filtered=function(f) local r={} for _,e in ipairs(entities) do if e.valid and e.surface==s and (not f.name or e.name==f.name) and in_area(e.position, f.area) then r[#r+1]=e end end return r end
+  s.tiles, s.hidden, s.decon = {}, {}, {}
+  local function key(x,y) return math.floor(x)..","..math.floor(y) end
+  local function base(x,y) return (name=="nauvis") and "grass" or (((math.floor(x)+math.floor(y))%2==0) and "lab-dark-1" or "lab-dark-2") end
+  s.tile_name=function(x,y) return s.tiles[key(x,y)] or base(x,y) end
+  s.set_tiles=function(t) s.tiles_set=(s.tiles_set or 0)+#t
+    for _,v in ipairs(t) do local p=v.position local x,y=p.x or p[1], p.y or p[2] local k=key(x,y)
+      local old=s.tile_name(x,y) local placeable=#(prototypes.tile[v.name].items_to_place_this or {})>0
+      if placeable and #(prototypes.tile[old].items_to_place_this or {})==0 then s.hidden[k]=old end
+      if not placeable then s.hidden[k]=nil end
+      s.tiles[k]=v.name s.decon[k]=nil end end
+  s.get_hidden_tile=function(p) return s.hidden[key(p.x or p[1], p.y or p[2])] end
+  s.get_tile=function(x,y) local k=key(x,y) local t={valid=true, name=s.tile_name(x,y), position={x=math.floor(x),y=math.floor(y)}}
+    t.to_be_deconstructed=function() return s.decon[k]==true end
+    t.order_deconstruction=function() s.decon[k]=true orders.tile_decon[#orders.tile_decon+1]=k return {} end
+    t.cancel_deconstruction=function() s.decon[k]=nil end
+    return t end
+  s.find_tiles_filtered=function(f) local r={} local lt, rb = f.area[1] or f.area.left_top, f.area[2] or f.area.right_bottom
+    local names={} for _,n in ipairs(f.name or {}) do names[n]=true end
+    for k,n in pairs(s.tiles) do local x,y=k:match("(-?%d+),(-?%d+)") x,y=tonumber(x),tonumber(y)
+      if x+0.5>=lt.x and x+0.5<=rb.x and y+0.5>=lt.y and y+0.5<=rb.y and (not f.name or names[n]) then r[#r+1]=s.get_tile(x,y) end end return r end
+  local function type_ok(f,e) if not f.type then return true end if type(f.type)=="string" then return e.type==f.type end for _,t in ipairs(f.type) do if e.type==t then return true end end return false end
+  s.find_entities_filtered=function(f) local r={} for _,e in ipairs(entities) do if e.valid and e.surface==s and (not f.name or e.name==f.name) and type_ok(f,e) and in_area(e.position, f.area) then r[#r+1]=e end end return r end
   return s end
 local nauvis = new_surface("nauvis"); nauvis.index=1; surfaces[1]=nauvis
 local function blueprint_stack()
   local st = { valid_for_read=false, is_blueprint=false, label=nil }
-  st.clear=function() st.valid_for_read=false st.ents=nil end
-  st.set_stack=function(x) st.valid_for_read=true st.is_blueprint=true st.ents=nil end
+  st.clear=function() st.valid_for_read=false st.ents=nil st.tiles=nil end
+  st.set_stack=function(x) st.valid_for_read=true st.is_blueprint=true st.ents=nil st.tiles=nil end
+  st.get_blueprint_tiles=function() return st.tiles end
+  st.set_blueprint_tiles=function(t) st.tiles=t end
   st.is_blueprint_setup=function() return st.ents ~= nil end
-  st.create_blueprint=function(p) local r={} local a=p.area for _,e in ipairs(entities) do if e.valid and e.surface.name==p.surface.name and e.name~="bpd-editor-radar" and e.position.x>=a.left_top.x and e.position.x<=a.right_bottom.x and e.position.y>=a.left_top.y and e.position.y<=a.right_bottom.y then r[#r+1]={entity_number=#r+1,name=e.name,position=e.position} end end if #r>0 then st.ents=r end end
+  st.create_blueprint=function(p) local r={} local a=p.area for _,e in ipairs(entities) do if e.valid and e.surface.name==p.surface.name and e.name~="bpd-editor-radar" and e.position.x>=a.left_top.x and e.position.x<=a.right_bottom.x and e.position.y>=a.left_top.y and e.position.y<=a.right_bottom.y then r[#r+1]={entity_number=#r+1,name=e.name,position=e.position} end end local tl={} for k,n in pairs(p.surface.tiles) do local x,y=k:match("(-?%d+),(-?%d+)") x,y=tonumber(x),tonumber(y)
+    if #(prototypes.tile[n].items_to_place_this or {})>0 and x>=a.left_top.x and x<a.right_bottom.x and y>=a.left_top.y and y<a.right_bottom.y then tl[#tl+1]={name=n, position={x=x,y=y}} end end
+    if #tl>0 then st.tiles=tl end if #r>0 then st.ents=r end end
   st.get_blueprint_entities=function() return st.ents end
   st.set_blueprint_entities=function(t) st.ents=t end
   st.set_blueprint_entity_tags=function(i,t) st.ents[i].tags=t end
   st.export_stack=function() return "EXPORT:"..serpent.line(st.ents) end
   st.import_stack=function(s) st.valid_for_read=true st.is_blueprint=true st.imported=s return 0 end
-  st.build_blueprint=function(p) if p.surface.name~='bpd-designer' then orders.built[#orders.built+1]={name=st.ents[1].name,pos=p.position,dir=st.ents[1].direction,mode=p.build_mode} return {} end local g={} for _,e in ipairs(st.ents) do g[#g+1]=p.surface.create_entity{name="entity-ghost", type="entity-ghost", inner_name=e.name, position={x=p.position.x+e.position.x,y=p.position.y+e.position.y}} end return g end
+  st.build_blueprint=function(p) if p.surface.name~='bpd-designer' then orders.built[#orders.built+1]={name=st.ents[1].name,pos=p.position,dir=st.ents[1].direction,mode=p.build_mode} return {} end for _,t in ipairs(st.tiles or {}) do p.surface.create_entity{name="tile-ghost", type="tile-ghost", inner_name=t.name, position={x=p.position.x+t.position.x+0.5,y=p.position.y+t.position.y+0.5}} end
+    local g={} for _,e in ipairs(st.ents or {}) do g[#g+1]=p.surface.create_entity{name="entity-ghost", type="entity-ghost", inner_name=e.name, position={x=p.position.x+e.position.x,y=p.position.y+e.position.y}} end return g end
   return st end
 game = { surfaces = surfaces, tick=0 }
 game.create_surface=function(n) local s=new_surface(n) s.index=2 surfaces[n]=s surfaces[2]=s return s end
@@ -249,4 +276,81 @@ check(DS.get(1)==nil and storage.instances[inst3.id]==nil, "design deleted and i
 check(U().selected==2 and player.gui.screen.bpd_window ~= nil, "designs window reopens on the remaining design")
 local left=0 for _,e in ipairs(entities) do if e.valid and e.surface.name=="bpd-designer" and e.position.y<128 then left=left+1 end end
 check(left==0, "design 1's cells are empty")
+
+-- ===== tiles =====
+local DSU = require("scripts.surface")
+local designer = surfaces["bpd-designer"]
+local function ghosts_left(area) local n=0 for _,e in ipairs(designer.find_entities_filtered{area=area, type={"tile-ghost","entity-ghost"}}) do n=n+1 end return n end
+player.cursor_stack.clear()
+local c2=player.cursor_stack; c2.set_stack("blueprint"); c2.label="Paved"
+c2.ents={{entity_number=1,name="lamp",position={x=2.5,y=2.5}}}
+c2.tiles={{name="concrete",position={x=0,y=0}},{name="concrete",position={x=1,y=0}},{name="concrete",position={x=2,y=0}}}
+handlers["bpd-toggle"]({player_index=1})
+local pd = DS.get(storage.editing[1].design_id)
+local pc = DSU.center(pd.id, 1)
+local parea = DSU.area(pd.id, 1)
+check(designer.tile_name(pc.x, pc.y)=="concrete" and designer.tile_name(pc.x+2, pc.y)=="concrete", "imported blueprint tiles are built on the designer")
+check(ghosts_left(parea)==0, "no tile ghosts left after import")
+-- a tile ghost placed by the player is built at once
+local tg = designer.create_entity{name="tile-ghost", type="tile-ghost", inner_name="stone-path", position={x=pc.x+5.5,y=pc.y+5.5}}
+handlers.on_built_entity({entity=tg, player_index=1})
+check(designer.tile_name(pc.x+5, pc.y+5)=="stone-path" and not tg.valid, "tile ghost on the designer is built")
+-- one the game placed without telling us is picked up by the periodic sweep
+designer.create_entity{name="tile-ghost", type="tile-ghost", inner_name="stone-path", position={x=pc.x+6.5,y=pc.y+5.5}}
+handlers.nth_tick({tick=30})
+check(designer.tile_name(pc.x+6, pc.y+5)=="stone-path", "periodic sweep builds missed tile ghosts")
+-- deconstructing a tile puts the lab floor back
+local proxy = designer.create_entity{name="deconstructible-tile-proxy", type="deconstructible-tile-proxy", position={x=pc.x+6.5,y=pc.y+5.5}}
+handlers.on_marked_for_deconstruction({entity=proxy, player_index=1})
+check(designer.tile_name(pc.x+6, pc.y+5):find("^lab") and not proxy.valid, "tile deconstruction restores the lab floor")
+handlers.on_gui_click({player_index=1, element={tags={bpd="save_return"}}})
+local pcell = pd.tiers[1]
+check(pcell.version==1 and #pcell.tiles==4, "saved tiles: 3 concrete + 1 stone path ("..#pcell.tiles..")")
+for _,t in ipairs(pcell.tiles) do check(not t.name:find("^lab"), "lab floor is not captured ("..t.name..")") end
+check(storage.scratch[1].get_blueprint_tiles() and #storage.scratch[1].get_blueprint_tiles()==4, "saved blueprint carries the tiles")
+check(pcell.tiles[1].position.x==0 and pcell.tiles[1].position.y==0, "tile offsets are tile centres relative to the marker")
+local v1_tags; for _,e in ipairs(storage.scratch[1].ents) do if e.name=="bpd-marker" then v1_tags=e.tags end end
+-- place v1 in the world rotated east, and let "robots" lay its tiles
+game.tick = 20
+handlers.on_pre_build({player_index=1, tick=20, direction=4, position={x=1000,y=1000}})
+local pmg = nauvis.create_entity{name="entity-ghost", type="entity-ghost", inner_name="bpd-marker", position={x=1000.5,y=1000.5}}
+handlers.on_built_entity({entity=pmg, player_index=1, tags=v1_tags})
+local pinst
+for _,i in pairs(storage.instances) do if i.design==pd.id then pinst=i end end
+check(pinst and pinst.t.k==1, "paved copy tracked, rotated east")
+local function wt(t) local c=T.world(pinst.t, pinst.marker.position, t.position) return math.floor(c.x), math.floor(c.y) end
+for _,t in ipairs(pcell.tiles) do local x,y=wt(t) nauvis.set_tiles({{name=t.name, position={x=x,y=y}}}) end
+local first = pcell.tiles[1]
+local fx, fy = wt(first)
+check(fx==1000 and fy==1000, "tile at the marker's tile maps onto the marker's tile ("..fx..","..fy..")")
+-- tile-only edit: remove one concrete, change stone path to refined concrete
+handlers.on_gui_click({player_index=1, element={tags={bpd="edit", design=pd.id}}})
+local pr = designer.create_entity{name="deconstructible-tile-proxy", type="deconstructible-tile-proxy", position={x=pc.x+2.5,y=pc.y+0.5}}
+handlers.on_marked_for_deconstruction({entity=pr, player_index=1})
+local rg = designer.create_entity{name="tile-ghost", type="tile-ghost", inner_name="refined-concrete", position={x=pc.x+5.5,y=pc.y+5.5}}
+handlers.on_built_entity({entity=rg, player_index=1})
+handlers.on_gui_click({player_index=1, element={tags={bpd="save_return"}}})
+check(pcell.version==2 and pcell.tile_snapshots[1] and #pcell.tiles==3, "tile-only edit makes a new version")
+-- safe update: refined concrete ghosted over the stone path, removed concrete marked for deconstruction
+local dec0 = #orders.tile_decon
+handlers.on_gui_click({player_index=1, element={tags={bpd="update", inst=pinst.id}}})
+local sp; for _,t in ipairs(pcell.tiles) do if t.name=="refined-concrete" then sp=t end end
+local sx, sy = wt(sp)
+local rghost = nauvis.find_entities_filtered{area={{sx+0.1,sy+0.1},{sx+0.9,sy+0.9}}, type="tile-ghost"}
+check(#rghost==1 and rghost[1].ghost_name=="refined-concrete", "update ghosts the changed tile at the rotated position")
+local removed; for _,t in ipairs(pcell.tile_snapshots[1]) do if t.name=="concrete" and t.position.x==2 then removed=t end end
+local ex, ey = wt(removed)
+check(#orders.tile_decon==dec0+1 and orders.tile_decon[#orders.tile_decon]==ex..","..ey, "update marks the removed concrete for deconstruction")
+check(pinst.version==2, "paved copy at v2")
+-- unchanged concrete is not re-ghosted
+local cx, cy = wt(pcell.tiles[1])
+check(#nauvis.find_entities_filtered{area={{cx+0.1,cy+0.1},{cx+0.9,cy+0.9}}, type="tile-ghost"}==0, "matching tiles are left alone")
+-- force match: a stray hand-laid concrete inside the footprint is removed, grass outside is untouched
+nauvis.set_tiles({{name="concrete", position={x=997, y=1002}}})
+local dec1 = #orders.tile_decon
+handlers.on_gui_click({player_index=1, element={tags={bpd="force", inst=pinst.id}}})
+local stray=false for i=dec1+1,#orders.tile_decon do if orders.tile_decon[i]=="997,1002" then stray=true end end
+check(stray, "force match removes a stray tile inside the footprint")
+local wrong=false for i=dec1+1,#orders.tile_decon do if orders.tile_decon[i]==cx..","..cy then wrong=true end end
+check(not wrong, "force match keeps master tiles")
 print("all passed")

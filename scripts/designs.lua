@@ -13,6 +13,8 @@
 --   export,           -- blueprint export string of the latest saved version
 --   snapshot,         -- normalised entity list of the latest version (used by tier diffs / instance updates)
 --   snapshots,        -- { [version] = snapshot } for every saved version (old ones are diffed against)
+--   tiles,            -- normalised tile list of the latest version: { name, position = tile centre - marker }
+--   tile_snapshots,   -- { [version] = tiles } like snapshots (missing for versions saved before 0.2.6)
 --   saved_tick,       -- game.tick of the last save that changed the content
 --   radar, marker, outline, label   -- runtime objects on the designer surface
 -- }
@@ -228,6 +230,27 @@ local function revive_all(entities)
   end
 end
 
+-- Remove the tile under a deconstructible-tile-proxy on the designer, putting the floor back.
+function M.remove_tile_at(proxy)
+  local surface, pos = proxy.surface, proxy.position
+  local x, y = math.floor(pos.x), math.floor(pos.y)
+  proxy.destroy()
+  local floor = surface.get_hidden_tile({ x, y }) or surf.lab_tile_at({ x = x, y = y })
+  surface.set_tiles({ { name = floor, position = { x, y } } }, true, false, true, false)
+end
+
+-- Make a designer cell "real": build every ghost left in it (entity and tile ghosts) and carry out every
+-- pending deconstruction. Ghosts and proxies can be left over when the game doesn't raise a build/deconstruct
+-- event for them (e.g. tile ghosts from build_blueprint), and they are never captured into blueprints.
+function M.settle(design, tier)
+  local surface = surf.get()
+  local area = surf.area(design.id, tier)
+  revive_all(surface.find_entities_filtered({ area = area, type = { "entity-ghost", "tile-ghost" } }))
+  for _, proxy in pairs(surface.find_entities_filtered({ area = area, type = "deconstructible-tile-proxy" })) do
+    if proxy.valid then M.remove_tile_at(proxy) end
+  end
+end
+
 -- Turn a ghost on the designer surface into a real (inert) entity, filling module requests.
 function M.instant_revive(ghost)
   if ghost.type == "entity-ghost" and ghost.ghost_name == M.MARKER then
@@ -266,6 +289,7 @@ function M.import(player, blueprint)
     raise_built = false,
   })
   revive_all(ghosts)
+  M.settle(design, 1)   -- tile ghosts are not always among the returned ghosts
 
   -- An imported blueprint may carry a marker from another save/design; keep only ours.
   for _, m in pairs(surface.find_entities_filtered({ name = M.MARKER, area = surf.area(design.id, 1) })) do
@@ -300,9 +324,27 @@ local function normalise(entities, marker_index)
   return list
 end
 
+-- Tiles as offsets of the tile centre from the marker (the same space as entity positions), sorted.
+local function normalise_tiles(tiles, origin)
+  local list = {}
+  for _, t in pairs(tiles) do
+    list[#list + 1] = {
+      name = t.name,
+      position = { x = t.position.x + 0.5 - origin.x, y = t.position.y + 0.5 - origin.y },
+    }
+  end
+  table.sort(list, function(a, b)
+    if a.position.y ~= b.position.y then return a.position.y < b.position.y end
+    return a.position.x < b.position.x
+  end)
+  return list
+end
+M.normalise_tiles = normalise_tiles
+
 -- Capture a design cell into a blueprint. Returns the scratch stack holding it (valid until next call).
 function M.save(design, tier, force)
   local cell = design.tiers[tier]
+  M.settle(design, tier)
   local stack = M.scratch_blueprint()
   stack.create_blueprint({
     surface = surf.get(),
@@ -326,12 +368,18 @@ function M.save(design, tier, force)
   end
 
   local snapshot = normalise(entities, marker_index)
+  local origin = marker_index and entities[marker_index].position or { x = 0.5, y = 0.5 }
+  local tiles = normalise_tiles(stack.get_blueprint_tiles() or {}, origin)
   local changed = serpent.line(snapshot) ~= serpent.line(cell.snapshot or {})
+    or serpent.line(tiles) ~= serpent.line(cell.tiles or {})
   if changed or cell.version == 0 then
     cell.version = cell.version + 1
     cell.snapshot = snapshot
     cell.snapshots = cell.snapshots or {}
     cell.snapshots[cell.version] = snapshot
+    cell.tiles = tiles
+    cell.tile_snapshots = cell.tile_snapshots or {}
+    cell.tile_snapshots[cell.version] = tiles
     cell.saved_tick = game.tick
   end
 
