@@ -85,6 +85,9 @@ script.on_event(defines.events.on_marked_for_upgrade, editor.on_marked_for_upgra
 script.on_event(defines.events.on_gui_click, gui.on_click)
 script.on_event(defines.events.on_gui_text_changed, gui.on_text_changed)
 script.on_event(defines.events.on_gui_closed, gui.on_closed)
+script.on_event(defines.events.on_gui_checked_state_changed, gui.on_checked_state_changed)
+script.on_event(defines.events.on_gui_selection_state_changed, gui.on_selection_state_changed)
+script.on_event(defines.events.on_gui_selected_tab_changed, gui.on_selected_tab_changed)
 
 script.on_event(defines.events.on_player_removed, function(event)
   storage.editing[event.player_index] = nil

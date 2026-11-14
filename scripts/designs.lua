@@ -13,6 +13,7 @@
 --   export,           -- blueprint export string of the latest saved version
 --   snapshot,         -- normalised entity list of the latest version (used by tier diffs / instance updates)
 --   snapshots,        -- { [version] = snapshot } for every saved version (old ones are diffed against)
+--   saved_tick,       -- game.tick of the last save that changed the content
 --   radar, marker, outline, label   -- runtime objects on the designer surface
 -- }
 
@@ -182,6 +183,16 @@ function M.delete_tier(design, tier, force)
   return true
 end
 
+-- Delete a whole design: every tier's cell is cleared. The caller handles placed copies and editors.
+function M.delete(design)
+  local surface = surf.get()
+  for t, cell in pairs(design.tiers) do
+    drop_render(cell)
+    wipe_area(surface, surf.area(design.id, t))
+  end
+  storage.designs[design.id] = nil
+end
+
 -- Is this cursor thing a blueprint we can read? Accepts an item stack or a library record.
 function M.readable_blueprint(player)
   local stack = player.cursor_stack
@@ -321,6 +332,7 @@ function M.save(design, tier, force)
     cell.snapshot = snapshot
     cell.snapshots = cell.snapshots or {}
     cell.snapshots[cell.version] = snapshot
+    cell.saved_tick = game.tick
   end
 
   if marker_index then
