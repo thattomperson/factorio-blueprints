@@ -1,0 +1,9 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2026-11-14
+  Features:
+    - Dedicated "Blueprint Designer" surface with one lab-tiled cell per design.
+    - Edit a held blueprint (inventory or library) on the designer surface; saving writes it back to your cursor.
+    - Ghosts placed on the designer surface are built instantly; deconstruction and upgrade marks apply instantly.
+    - Design marker entity embedded in every saved blueprint so the mod can recognise its own designs.
+    - Designs window listing all designs with Edit / Get blueprint / New.
