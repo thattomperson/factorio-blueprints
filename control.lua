@@ -81,6 +81,7 @@ script.on_event(defines.events.on_object_destroyed, instances.on_object_destroye
 script.on_event(defines.events.on_player_setup_blueprint, instances.on_player_setup_blueprint)
 script.on_event(defines.events.on_marked_for_deconstruction, editor.on_marked_for_deconstruction)
 script.on_event(defines.events.on_marked_for_upgrade, editor.on_marked_for_upgrade)
+script.on_nth_tick(30, editor.on_nth_tick)
 
 script.on_event(defines.events.on_gui_click, gui.on_click)
 script.on_event(defines.events.on_gui_text_changed, gui.on_text_changed)

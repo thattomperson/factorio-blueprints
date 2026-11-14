@@ -198,12 +198,14 @@ function M.apply(inst, player, target_tier, mode)
 
   local counts
   if mode == "exact" then
-    counts = diff.force_match(ctx, to_cell.snapshot, { [MARKER] = true })
+    counts = diff.force_match(ctx, to_cell.snapshot, { [MARKER] = true }, to_cell.tiles)
   else
     local from_cell = design.tiers[inst.tier]
     local old = from_cell and from_cell.snapshots and from_cell.snapshots[inst.version]
+    local old_tiles = from_cell and from_cell.tile_snapshots and from_cell.tile_snapshots[inst.version]
     -- Without the old snapshot we can't know what to remove; only add/re-paste.
     counts = diff.apply(ctx, diff.plan(old or {}, to_cell.snapshot))
+    diff.apply_tiles(ctx, diff.plan_tiles(old_tiles, to_cell.tiles), counts)
   end
   inst.tier = target_tier
   inst.version = to_cell.version
