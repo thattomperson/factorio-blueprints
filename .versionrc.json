@@ -1,0 +1,71 @@
+{
+  "tagPrefix": "v",
+  "commitAll": true,
+  "bumpFiles": [
+    {
+      "filename": "info.json",
+      "type": "json"
+    },
+    {
+      "filename": "package.json",
+      "type": "json"
+    },
+    {
+      "filename": "package-lock.json",
+      "type": "json"
+    }
+  ],
+  "packageFiles": [
+    {
+      "filename": "info.json",
+      "type": "json"
+    }
+  ],
+  "types": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring",
+      "hidden": true
+    },
+    {
+      "type": "docs",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "hidden": true
+    },
+    {
+      "type": "style",
+      "hidden": true
+    }
+  ],
+  "scripts": {
+    "postchangelog": "node tools/factorio-changelog.mjs && git add changelog.txt"
+  },
+  "header": "# Changelog\n\nAll notable changes to this project are documented here. Entries are generated from\n[Conventional Commits](https://www.conventionalcommits.org/) by `npm run release`; the in-game\n`changelog.txt` is generated from the same commits.\n"
+}

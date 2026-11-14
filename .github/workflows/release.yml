@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read mod name and version
+        id: mod
+        run: |
+          NAME=$(jq -r .name info.json)
+          VERSION=$(jq -r .version info.json)
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match info.json version $VERSION"
+            exit 1
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=${NAME}_${VERSION}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build mod zip
+        # Files marked export-ignore in .gitattributes are left out.
+        run: |
+          git archive --format=zip --prefix="${{ steps.mod.outputs.name }}_${{ steps.mod.outputs.version }}/" \
+            -o "${{ steps.mod.outputs.zip }}" HEAD
+          unzip -l "${{ steps.mod.outputs.zip }}"
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          VERSION="${{ steps.mod.outputs.version }}"
+          awk -v v="$VERSION" '
+            /^#+ \[?[0-9]+\.[0-9]+\.[0-9]+/ { if (found) exit; if (index($0, v)) { found=1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Release $VERSION" > notes.md
+          cat notes.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.mod.outputs.zip }}" \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+
+      - name: Upload to the Factorio mod portal
+        env:
+          FACTORIO_API_KEY: ${{ secrets.FACTORIO_API_KEY }}
+          MOD: ${{ steps.mod.outputs.name }}
+          ZIP: ${{ steps.mod.outputs.zip }}
+        run: |
+          if [ -z "$FACTORIO_API_KEY" ]; then
+            echo "::warning::FACTORIO_API_KEY secret is not set; skipping the mod portal upload."
+            exit 0
+          fi
+          API=https://mods.factorio.com/api/v2/mods
+          # Existing mods get a new release; the very first upload has to publish the mod instead.
+          RESP=$(curl -sS -H "Authorization: Bearer $FACTORIO_API_KEY" -F "mod=$MOD" "$API/releases/init_upload")
+          if [ "$(echo "$RESP" | jq -r '.error // empty')" = "UnknownMod" ]; then
+            echo "Mod not on the portal yet; publishing it."
+            RESP=$(curl -sS -H "Authorization: Bearer $FACTORIO_API_KEY" -F "mod=$MOD" "$API/init_publish")
+            PUBLISH=1
+          fi
+          UPLOAD_URL=$(echo "$RESP" | jq -r '.upload_url // empty')
+          if [ -z "$UPLOAD_URL" ]; then
+            echo "::error::Mod portal refused the upload: $RESP"
+            exit 1
+          fi
+          if [ -n "$PUBLISH" ]; then
+            RESULT=$(curl -sS -F "file=@$ZIP" \
+              -F "source_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+              -F "category=utilities" \
+              "$UPLOAD_URL")
+          else
+            RESULT=$(curl -sS -F "file=@$ZIP" "$UPLOAD_URL")
+          fi
+          echo "$RESULT"
+          [ "$(echo "$RESULT" | jq -r '.success // false')" = "true" ] || { echo "::error::Upload failed"; exit 1; }

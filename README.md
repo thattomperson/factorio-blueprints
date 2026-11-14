@@ -30,6 +30,11 @@ Copy or symlink this folder into your Factorio `mods` directory as `blueprint-de
   * **Force match**: make the copy exactly match the master, removing anything extra in its footprint.
   * **Update all outdated** / **Upgrade all Tn -> Tn+1**.
 
+## Contributing and releases
+
+See [CONTRIBUTING.md](CONTRIBUTING.md): Conventional Commits, squash merges, and `npm run release` + tag push
+for GitHub and mod portal releases.
+
 ## Tests
 
 `pip install lupa && python3 -I tests/run.py` runs the control logic against a mocked game runtime.
