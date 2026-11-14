@@ -71,8 +71,9 @@ end
 function M.on_marker_ghost(ghost, tags, player_index)
   tags = tags or ghost.tags or {}
   local design = tags.bpd_design and designs.get(tags.bpd_design)
-  if not (design and design.tiers[tags.bpd_tier or 1]) then
-    ghost.destroy()   -- a marker from another save, or an unknown design: drop it
+  local tier = design and designs.resolve_tier(design, tags.bpd_tier or 1, tags.bpd_rev)
+  if not (tier and design.tiers[tier]) then
+    ghost.destroy()   -- a marker from another save, an unknown design, or a deleted tier: drop it
     return true
   end
 
@@ -89,7 +90,7 @@ function M.on_marker_ghost(ghost, tags, player_index)
     id = marker.unit_number,
     marker = marker,
     design = design.id,
-    tier = tags.bpd_tier or 1,
+    tier = tier,
     version = tags.bpd_version or 1,
     surface_index = marker.surface.index,
     position = marker.position,
@@ -124,19 +125,50 @@ function M.on_player_setup_blueprint(event)
         local design = id and designs.get(id)
         local cell = design and design.tiers[tier]
         if cell then
-          bp.set_blueprint_entity_tags(index, { bpd_design = id, bpd_tier = tier, bpd_version = cell.version })
+          bp.set_blueprint_entity_tags(index, designs.marker_tags(design, tier, cell.version))
         end
       else
         local inst = storage.instances[entity.unit_number]
-        if inst then
-          bp.set_blueprint_entity_tags(index, {
-            bpd_design = inst.design, bpd_tier = inst.tier, bpd_version = inst.version,
-            bpd_k = inst.t.k, bpd_f = inst.t.f,
-          })
+        local design = inst and designs.get(inst.design)
+        if design then
+          local tags = designs.marker_tags(design, inst.tier, inst.version)
+          tags.bpd_k, tags.bpd_f = inst.t.k, inst.t.f
+          bp.set_blueprint_entity_tags(index, tags)
         end
       end
     end
   end
+end
+
+-- Stop tracking a copy. Its buildings stay; its marker is removed so nothing points at the old tier.
+function M.unlink(inst)
+  if inst.label and inst.label.valid then inst.label.destroy() end
+  storage.instances[inst.id] = nil
+  if inst.marker and inst.marker.valid then inst.marker.destroy() end
+end
+
+function M.count_on_tier(design_id, tier)
+  local n = 0
+  for _, inst in pairs(storage.instances) do
+    if inst.design == design_id and inst.tier == tier then n = n + 1 end
+  end
+  return n
+end
+
+-- A tier of a design was deleted: unlink copies on it and renumber copies on later tiers.
+-- Returns how many copies were unlinked.
+function M.on_tier_deleted(design_id, tier)
+  local unlinked = 0
+  for _, inst in pairs(M.for_design(design_id)) do
+    if inst.tier == tier then
+      M.unlink(inst)
+      unlinked = unlinked + 1
+    elseif inst.tier > tier then
+      inst.tier = inst.tier - 1
+      refresh_label(inst)
+    end
+  end
+  return unlinked
 end
 
 ---------------------------------------------------------------------------------------------------

@@ -48,6 +48,12 @@ the library entry; no blueprint book support; blueprints bigger than 224x224 get
   * same entity, different settings (recipe, filters, circuit conditions) -> paste settings / ghost over it
 * "Upgrade to tier N+1" acts on one placed instance, or from the designs window on all instances of a tier.
 * Placed rotation/flip is applied when mapping snapshot offsets to world positions.
+* "Delete tier" removes tier N: cells N+1.. are cloned one column left (the last column is wiped back to lab
+  tiles), cell records and placed copies on later tiers are renumbered, and copies of tier N are unlinked (their
+  marker is destroyed, buildings stay). Tier numbers stay stable for blueprints already saved: each design keeps
+  `deleted_tiers` (in order) and every marker is tagged `bpd_rev = #deleted_tiers`, so an old blueprint's
+  `bpd_tier` is replayed through later deletions (`designs.resolve_tier`). A blueprint of a deleted tier is
+  imported as a new design / not tracked when placed.
 
 ## Part 3: instance tracking (built, v0.2.0)
 

@@ -5,6 +5,7 @@
 
 local surf = require("scripts.surface")
 local designs = require("scripts.designs")
+local instances = require("scripts.instances")
 
 local M = {}
 
@@ -90,6 +91,38 @@ function M.new_tier(player)
   local tier = designs.new_tier(design, ed.tier, player.force)
   M.enter(player, design, tier)
   player.print({ "bpd.tier-created", design.name, tier, ed.tier })
+end
+
+-- Delete the tier being edited (no save). Later tiers move down one; copies placed from the deleted tier
+-- are unlinked. Everyone editing this design is moved to the tier now at their old cell's number.
+function M.delete_tier(player)
+  local ed = storage.editing[player.index]
+  local design = ed and designs.get(ed.design_id)
+  if not design then return end
+  local tier = ed.tier
+  if not designs.delete_tier(design, tier, player.force) then
+    player.print({ "bpd.tier-delete-last" })
+    return
+  end
+  local unlinked = instances.on_tier_deleted(design.id, tier)
+
+  for index, other in pairs(storage.editing) do
+    if other.design_id == design.id then
+      if other.tier == tier then
+        other.tier = math.max(1, tier - 1)
+      elseif other.tier > tier then
+        other.tier = other.tier - 1
+      end
+      local p = game.get_player(index)
+      if p and p.valid then
+        storage.transitioning[index] = true
+        p.set_controller({ type = defines.controllers.remote, surface = surf.get(), position = surf.center(design.id, other.tier) })
+        storage.transitioning[index] = nil
+        M.on_change(p)
+      end
+    end
+  end
+  player.print({ "bpd.tier-deleted", design.name, tier, unlinked })
 end
 
 -- Save without leaving.

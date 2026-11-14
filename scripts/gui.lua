@@ -1,7 +1,8 @@
 -- GUIs:
 --   * Designs window (screen): designs with Edit / Get blueprint / Copies, plus New design
 --   * Copies window (screen): placed copies of one design with Update / Upgrade / Force match / Show
---   * Editing bar (top): while on the designer: tier switcher, New tier, Save, Save & return
+--   * Editing bar (top): while on the designer: tier switcher, New tier, Delete tier, Save, Save & return
+--   * Delete-tier confirmation (screen)
 
 local designs = require("scripts.designs")
 local editor = require("scripts.editor")
@@ -12,6 +13,7 @@ local M = {}
 local WINDOW = "bpd_window"
 local COPIES = "bpd_copies"
 local BAR = "bpd_editing_bar"
+local CONFIRM = "bpd_confirm_delete_tier"
 
 local function destroy(element) if element and element.valid then element.destroy() end end
 
@@ -121,11 +123,50 @@ function M.refresh_bar(player)
     if t == ed.tier then b.enabled = false end
   end
   frame.add({ type = "button", caption = { "bpd.new-tier" }, tooltip = { "bpd.new-tier-tooltip" }, tags = { bpd = "new_tier" } })
+  local del = frame.add({ type = "button", caption = { "bpd.delete-tier" }, style = "red_button",
+    tooltip = { "bpd.delete-tier-tooltip" }, tags = { bpd = "delete_tier" } })
+  if designs.max_tier(design) <= 1 then
+    del.enabled = false
+    del.tooltip = { "bpd.tier-delete-last" }
+  end
   frame.add({ type = "button", caption = { "bpd.save" }, tags = { bpd = "save" } })
   frame.add({ type = "button", caption = { "bpd.save-return" }, style = "confirm_button", tags = { bpd = "save_return" } })
 end
 
+function M.confirm_delete_tier(player)
+  local ed = storage.editing[player.index]
+  local design = ed and designs.get(ed.design_id)
+  if not design or designs.max_tier(design) <= 1 then return end
+  destroy(player.gui.screen[CONFIRM])
+  local frame = player.gui.screen.add({ type = "frame", name = CONFIRM, direction = "vertical",
+    caption = { "bpd.delete-tier-title", design.name, ed.tier } })
+  frame.auto_center = true
+  local body = frame.add({ type = "flow", direction = "vertical" })
+  local lines = { { "bpd.delete-tier-body" } }
+  if ed.tier < designs.max_tier(design) then
+    lines[#lines + 1] = { "bpd.delete-tier-shift", ed.tier + 1, ed.tier }
+  end
+  local copies = instances.count_on_tier(design.id, ed.tier)
+  if copies > 0 then
+    lines[#lines + 1] = { "bpd.delete-tier-copies", copies }
+  end
+  for _, line in pairs(lines) do
+    local l = body.add({ type = "label", caption = line })
+    l.style.single_line = false
+    l.style.maximal_width = 420
+  end
+  local buttons = frame.add({ type = "flow", direction = "horizontal" })
+  buttons.style.top_margin = 8
+  buttons.add({ type = "button", caption = { "bpd.cancel" }, style = "back_button", tags = { bpd = "close", window = CONFIRM } })
+  local filler = buttons.add({ type = "empty-widget" })
+  filler.style.horizontally_stretchable = true
+  buttons.add({ type = "button", caption = { "bpd.delete-tier" }, style = "red_confirm_button",
+    tags = { bpd = "delete_tier_confirm", design = design.id, tier = ed.tier } })
+  player.opened = frame
+end
+
 editor.on_change = function(player)
+  destroy(player.gui.screen[CONFIRM])
   M.refresh_bar(player)
 end
 
@@ -178,6 +219,15 @@ function M.on_click(event)
     editor.leave(player, { save = true, deliver = true })
   elseif action == "new_tier" then
     editor.new_tier(player)
+  elseif action == "delete_tier" then
+    M.confirm_delete_tier(player)
+  elseif action == "delete_tier_confirm" then
+    destroy(player.gui.screen[CONFIRM])
+    local ed = storage.editing[player.index]
+    -- Only act if the player is still on the tier they confirmed for.
+    if ed and ed.design_id == tags.design and ed.tier == tags.tier then
+      editor.delete_tier(player)
+    end
   elseif action == "goto_tier" then
     local ed = storage.editing[player.index]
     local design = ed and designs.get(ed.design_id)
@@ -221,7 +271,7 @@ end
 
 function M.on_closed(event)
   local el = event.element
-  if el and el.valid and (el.name == WINDOW or el.name == COPIES) then
+  if el and el.valid and (el.name == WINDOW or el.name == COPIES or el.name == CONFIRM) then
     el.destroy()
   end
 end
